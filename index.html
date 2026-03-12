@@ -406,8 +406,24 @@
   }
   .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 
-  .divider { height: 1px; background: var(--border); margin: 14px 0; }
-  .empty-state { text-align: center; color: var(--text3); font-size: 13px; padding: 30px 0; }
+  .drive-file {
+    display: flex; align-items: center; gap: 12px;
+    padding: 11px 14px;
+    border-bottom: 1px solid var(--border);
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+  .drive-file:last-child { border-bottom: none; }
+  .drive-file:active, .drive-file:hover { background: var(--surface2); }
+  .drive-file-icon { font-size: 20px; flex-shrink: 0; }
+  .drive-file-info { flex: 1; min-width: 0; }
+  .drive-file-name { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .drive-file-meta { font-size: 10px; color: var(--text3); margin-top: 2px; }
+  .drive-file-select { font-size: 11px; color: var(--accent); font-weight: 700; flex-shrink: 0; }
+  .drive-loading { text-align:center; padding: 24px; color: var(--text3); font-size:13px; }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .spinner { display: inline-block; width: 16px; height: 16px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.7s linear infinite; vertical-align: middle; margin-right: 6px; }
 </style>
 </head>
 <body>
@@ -745,11 +761,16 @@
         <span id="create-sheet-label">✨ Create New Sheet</span>
       </button>
       <div class="divider"></div>
-      <div style="font-size:12px;color:var(--text3);text-align:center;margin-bottom:10px">— or use an existing sheet —</div>
-      <div class="form-group" style="margin-bottom:8px">
-        <input type="url" id="sheets-url-input-alt" placeholder="Paste existing sheet URL..." />
+
+      <!-- Drive Browser -->
+      <div style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:var(--text2);margin-bottom:12px">Browse Your Drive</div>
+      <div style="display:flex;gap:8px;margin-bottom:10px">
+        <input type="text" id="drive-search" placeholder="Search spreadsheets…" style="flex:1" oninput="debounceDriveSearch()" />
+        <button class="btn btn-secondary" style="padding:10px 14px;width:auto;flex-shrink:0" onclick="loadDriveFiles()">↻</button>
       </div>
-      <button class="btn btn-secondary" onclick="saveSheetLinkAlt()">Link Existing Sheet</button>
+      <div id="drive-file-list" style="max-height:220px;overflow-y:auto;border:1px solid var(--border);border-radius:12px">
+        <div class="empty-state" style="padding:20px">Tap ↻ to browse your sheets</div>
+      </div>
     </div>
 
     <!-- Step 2: Sheet linked -->
@@ -776,7 +797,7 @@
 
 <script>
 // ── GOOGLE CLIENT ID ── Replace with your actual Client ID ──
-const GOOGLE_CLIENT_ID = '516815100230-ll2teblmpk6c792monn88secpuk0np2d.apps.googleusercontent.com';
+const GOOGLE_CLIENT_ID = 'YOUR_CLIENT_ID_HERE.apps.googleusercontent.com';
 
 // ── STATE ──
 let state = {
@@ -1251,19 +1272,20 @@ function startGoogleAuth(clientId, btn) {
   try {
     gTokenClient = google.accounts.oauth2.initTokenClient({
       client_id: clientId,
-      scope: 'https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/userinfo.profile',
+      scope: 'https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/userinfo.profile',
       callback: async (resp) => {
         if (resp.error) { showToast('Auth error: ' + resp.error); return; }
         gAccessToken = resp.access_token;
         await fetchGoogleUser();
         showGsheetStep('create');
+        loadDriveFiles(); // auto-load files after sign in
       }
     });
-    if (btn) { btn.textContent = 'Continue →'; btn.disabled = false; }
+    if (btn) { btn.textContent = '🔑 Sign in with Google'; btn.disabled = false; }
     gTokenClient.requestAccessToken();
   } catch(e) {
     showToast('Auth init failed — check Client ID');
-    if (btn) { btn.textContent = 'Continue →'; btn.disabled = false; }
+    if (btn) { btn.textContent = '🔑 Sign in with Google'; btn.disabled = false; }
   }
 }
 
@@ -1584,7 +1606,7 @@ function reAuthAndRun(callback) {
       try {
         const client = google.accounts.oauth2.initTokenClient({
           client_id: clientId,
-          scope: 'https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/userinfo.profile',
+          scope: 'https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/userinfo.profile',
           prompt: '',
           callback: async (resp) => {
             if (resp.error) { showToast('Auth failed: ' + resp.error); resolve(); return; }
@@ -1636,17 +1658,76 @@ function saveSheetLink() {
   showToast('Google Sheet linked! 📗');
 }
 
-function saveSheetLinkAlt() {
-  const url = document.getElementById('sheets-url-input-alt').value.trim();
-  if (!url) { showToast('Enter a Google Sheets URL'); return; }
+// ── GOOGLE DRIVE BROWSER ──
+let driveSearchTimer = null;
+
+function debounceDriveSearch() {
+  clearTimeout(driveSearchTimer);
+  driveSearchTimer = setTimeout(loadDriveFiles, 400);
+}
+
+async function loadDriveFiles() {
+  if (!gAccessToken) {
+    showToast('Sign in first');
+    return;
+  }
+  const query = (document.getElementById('drive-search')?.value || '').trim();
+  const listEl = document.getElementById('drive-file-list');
+  listEl.innerHTML = '<div class="drive-loading"><span class="spinner"></span>Loading…</div>';
+
+  try {
+    // Search Drive for Google Sheets files
+    let q = `mimeType='application/vnd.google-apps.spreadsheet' and trashed=false`;
+    if (query) q += ` and name contains '${query.replace(/'/g, "\\'")}'`;
+
+    const res = await fetch(
+      `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id,name,modifiedTime,owners)&orderBy=modifiedTime desc&pageSize=30`,
+      { headers: { Authorization: 'Bearer ' + gAccessToken } }
+    );
+    const data = await res.json();
+
+    if (data.error) {
+      // Drive API might not be enabled — show helpful message
+      listEl.innerHTML = `<div class="drive-loading" style="color:var(--accent2)">
+        ⚠️ Drive API not enabled.<br>
+        <span style="font-size:11px;color:var(--text3)">Go to Google Cloud Console → Library → Enable "Google Drive API"</span>
+      </div>`;
+      return;
+    }
+
+    const files = data.files || [];
+    if (!files.length) {
+      listEl.innerHTML = '<div class="drive-loading">No spreadsheets found in your Drive</div>';
+      return;
+    }
+
+    listEl.innerHTML = files.map(f => {
+      const modified = new Date(f.modifiedTime).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' });
+      return `
+        <div class="drive-file" onclick="selectDriveFile('${f.id}', ${JSON.stringify(f.name).replace(/"/g, '&quot;')})">
+          <div class="drive-file-icon">📗</div>
+          <div class="drive-file-info">
+            <div class="drive-file-name">${f.name}</div>
+            <div class="drive-file-meta">Modified ${modified}</div>
+          </div>
+          <div class="drive-file-select">Link →</div>
+        </div>`;
+    }).join('');
+  } catch(e) {
+    listEl.innerHTML = `<div class="drive-loading" style="color:var(--accent2)">Error loading files: ${e.message}</div>`;
+  }
+}
+
+function selectDriveFile(fileId, fileName) {
+  const url = `https://docs.google.com/spreadsheets/d/${fileId}/edit`;
   state.sheetsUrl = url;
-  state.sheetsId = extractSheetId(url);
-  state.sheetsName = 'Linked Sheet';
+  state.sheetsId = fileId;
+  state.sheetsName = fileName;
   save(); updateSheetsUI();
-  document.getElementById('linked-sheet-name').textContent = 'Linked Sheet';
+  document.getElementById('linked-sheet-name').textContent = fileName;
   document.getElementById('linked-sheet-url-display').textContent = url;
   showGsheetStep('linked');
-  showToast('Google Sheet linked! 📗');
+  showToast(`📗 Linked: ${fileName}`);
 }
 
 function extractSheetId(url) {
@@ -1711,6 +1792,7 @@ function openModal(id) {
       showGsheetStep('linked');
     } else if (gAccessToken) {
       showGsheetStep('create');
+      loadDriveFiles();
     } else {
       showGsheetStep('signin');
     }
