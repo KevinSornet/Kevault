@@ -1472,20 +1472,39 @@ async function deleteSheetRowById(tab, sheetNumericId, id) {
   });
 }
 
-// ── TRANSACTION SHEET OPS ──
+async function ensureAuth() {
+  if (gAccessToken) return true;
+  if (!state.googleClientId || !state.sheetsId) return false;
+  await reAuthAndRun(null);
+  return !!gAccessToken;
+}
+
+// ── ROW CONVERTERS ──
 function txnToRow(t) {
   const src = state.sources.find(s => String(s.id) === String(t.source));
   return [String(t.id), t.date, t.type, t.desc || '', t.category || '', t.amount, String(t.source), src ? src.name : ''];
 }
 
+function goalToRow(g) {
+  const pct = g.target ? Math.round((g.current / g.target) * 100) : 0;
+  const src = g.sourceId ? state.sources.find(s => String(s.id) === String(g.sourceId)) : null;
+  return [String(g.id), g.name, g.emoji || '', g.target, g.current, Math.max(0, g.target - g.current), pct + '%', g.deadline || '', src ? src.name : '', g.monthly || 0];
+}
+
+function sourceToRow(s) {
+  return [String(s.id), s.name, s.type, s.balance, s.color];
+}
+
 async function appendTxnToSheet(t) {
-  if (!state.sheetsId || !gAccessToken) return;
+  if (!state.sheetsId) return;
+  if (!await ensureAuth()) return;
   try { await appendSheetRow('Transactions', txnToRow(t)); }
   catch(e) { console.warn('Sheet append failed', e); }
 }
 
 async function updateTxnInSheet(t) {
-  if (!state.sheetsId || !gAccessToken) return;
+  if (!state.sheetsId) return;
+  if (!await ensureAuth()) return;
   try {
     const rowNum = await findRowById('Transactions', t.id);
     if (rowNum !== -1) await updateSheetRow('Transactions', rowNum, txnToRow(t));
@@ -1493,26 +1512,22 @@ async function updateTxnInSheet(t) {
 }
 
 async function deleteTxnFromSheet(id) {
-  if (!state.sheetsId || !gAccessToken) return;
+  if (!state.sheetsId) return;
+  if (!await ensureAuth()) return;
   try { await deleteSheetRowById('Transactions', 0, id); }
   catch(e) { console.warn('Sheet delete failed', e); }
 }
 
-// ── GOAL SHEET OPS ──
-function goalToRow(g) {
-  const pct = g.target ? Math.round((g.current / g.target) * 100) : 0;
-  const src = g.sourceId ? state.sources.find(s => String(s.id) === String(g.sourceId)) : null;
-  return [String(g.id), g.name, g.emoji || '', g.target, g.current, Math.max(0, g.target - g.current), pct + '%', g.deadline || '', src ? src.name : '', g.monthly || 0];
-}
-
 async function appendGoalToSheet(g) {
-  if (!state.sheetsId || !gAccessToken) return;
+  if (!state.sheetsId) return;
+  if (!await ensureAuth()) return;
   try { await appendSheetRow('Goals', goalToRow(g)); }
   catch(e) { console.warn('Goal append failed', e); }
 }
 
 async function updateGoalInSheet(g) {
-  if (!state.sheetsId || !gAccessToken) return;
+  if (!state.sheetsId) return;
+  if (!await ensureAuth()) return;
   try {
     const rowNum = await findRowById('Goals', g.id);
     if (rowNum !== -1) await updateSheetRow('Goals', rowNum, goalToRow(g));
@@ -1520,34 +1535,44 @@ async function updateGoalInSheet(g) {
 }
 
 async function deleteGoalFromSheet(id) {
-  if (!state.sheetsId || !gAccessToken) return;
+  if (!state.sheetsId) return;
+  if (!await ensureAuth()) return;
   try { await deleteSheetRowById('Goals', 1, id); }
   catch(e) { console.warn('Goal delete failed', e); }
 }
 
-// ── SOURCE SHEET OPS ──
-function sourceToRow(s) {
-  return [s.id, s.name, s.type, s.balance, s.color];
-}
-
 async function appendSourceToSheet(s) {
-  if (!state.sheetsId || !gAccessToken) return;
+  if (!state.sheetsId) return;
+  if (!await ensureAuth()) return;
   try { await appendSheetRow('Sources', sourceToRow(s)); }
   catch(e) { console.warn('Source append failed', e); }
 }
 
 async function deleteSourceFromSheet(id) {
-  if (!state.sheetsId || !gAccessToken) return;
+  if (!state.sheetsId) return;
+  if (!await ensureAuth()) return;
   try { await deleteSheetRowById('Sources', 2, id); }
   catch(e) { console.warn('Source delete failed', e); }
 }
 
 // ── FULL SYNC ──
 async function syncAllToSheet() {
-  if (!state.sheetsId || !gAccessToken) {
-    showToast('Not connected — sign in first');
+  if (!state.sheetsId) {
+    showToast('No sheet linked — set one up first');
     return;
   }
+
+  // If token expired/missing but we have a client ID, re-auth then sync
+  if (!gAccessToken) {
+    if (!state.googleClientId) {
+      showToast('Sign in via the 📊 menu first');
+      return;
+    }
+    showToast('Re-authenticating…');
+    await reAuthAndRun(() => syncAllToSheet());
+    return;
+  }
+
   showToast('Syncing…');
   try {
     for (const tab of ['Transactions!A2:Z', 'Goals!A2:Z', 'Sources!A2:Z']) {
@@ -1558,6 +1583,42 @@ async function syncAllToSheet() {
   } catch(e) {
     showToast('Sync failed: ' + e.message);
   }
+}
+
+// Re-authenticate silently using saved client ID, then run a callback
+function reAuthAndRun(callback) {
+  return new Promise((resolve) => {
+    const tryAuth = () => {
+      try {
+        const client = google.accounts.oauth2.initTokenClient({
+          client_id: state.googleClientId,
+          scope: 'https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/userinfo.profile',
+          prompt: '',  // empty = silent re-auth if session still valid, else shows popup
+          callback: async (resp) => {
+            if (resp.error) { showToast('Auth failed: ' + resp.error); resolve(); return; }
+            gAccessToken = resp.access_token;
+            await fetchGoogleUser();
+            if (callback) await callback();
+            resolve();
+          }
+        });
+        client.requestAccessToken();
+      } catch(e) {
+        showToast('Auth error — please sign in via 📊');
+        resolve();
+      }
+    };
+
+    if (!window.google) {
+      const s = document.createElement('script');
+      s.src = 'https://accounts.google.com/gsi/client';
+      s.onload = tryAuth;
+      s.onerror = () => { showToast('Failed to load Google SDK'); resolve(); };
+      document.head.appendChild(s);
+    } else {
+      tryAuth();
+    }
+  });
 }
 
 function unlinkSheet() {
