@@ -637,11 +637,22 @@
       </div>
     </div>
     <div class="form-group">
-      <label>Emoji Icon</label>
-      <div class="chip-row" id="goal-emoji-chips">
-        🏠 🚗 ✈️ 💍 📱 🎓 🏖️ 💊 🛡️ 💰 🎮 🌍
-        <span id="selected-emoji" style="display:none"></span>
+      <label>Linked Source / Account</label>
+      <select id="goal-source">
+        <option value="">— None —</option>
+      </select>
+      <div style="font-size:11px;color:var(--text3);margin-top:5px">When you add funds to this goal, it deducts from the linked account.</div>
+    </div>
+    <div class="form-group">
+      <label>Monthly Contribution Target (optional)</label>
+      <div class="amount-input-wrap">
+        <span class="currency-sym">₱</span>
+        <input type="number" id="goal-monthly" placeholder="0.00" inputmode="decimal" />
       </div>
+    </div>
+    <div class="form-group">
+      <label>Emoji Icon</label>
+      <div class="chip-row" id="goal-emoji-chips"></div>
     </div>
     <div class="form-group">
       <label>Target Date (optional)</label>
@@ -841,13 +852,13 @@ function updateStats() {
   const expenses = monthTxns.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
   const income = monthTxns.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0);
 
+  // Fix: coerce IDs to strings for reliable comparison
   const totalBalance = state.sources.reduce((s, src) => {
-    const srcIncome = state.transactions.filter(t => t.type === 'income' && t.source === src.id).reduce((a, t) => a + t.amount, 0);
-    const srcExpense = state.transactions.filter(t => t.type === 'expense' && t.source === src.id).reduce((a, t) => a + t.amount, 0);
+    const sid = String(src.id);
+    const srcIncome  = state.transactions.filter(t => t.type === 'income'  && String(t.source) === sid).reduce((a, t) => a + t.amount, 0);
+    const srcExpense = state.transactions.filter(t => t.type === 'expense' && String(t.source) === sid).reduce((a, t) => a + t.amount, 0);
     return s + src.balance + srcIncome - srcExpense;
   }, 0);
-
-  const baseBalance = state.sources.reduce((s, src) => s + src.balance, 0);
 
   document.getElementById('net-worth').textContent = formatNum(totalBalance);
   document.getElementById('month-expense').textContent = fmtMoney(expenses);
@@ -870,8 +881,9 @@ function renderSources() {
     return;
   }
   el.innerHTML = state.sources.map(src => {
-    const srcIncome = state.transactions.filter(t => t.type === 'income' && t.source === src.id).reduce((a, t) => a + t.amount, 0);
-    const srcExpense = state.transactions.filter(t => t.type === 'expense' && t.source === src.id).reduce((a, t) => a + t.amount, 0);
+    const sid = String(src.id);
+    const srcIncome  = state.transactions.filter(t => t.type === 'income'  && String(t.source) === sid).reduce((a, t) => a + t.amount, 0);
+    const srcExpense = state.transactions.filter(t => t.type === 'expense' && String(t.source) === sid).reduce((a, t) => a + t.amount, 0);
     const bal = src.balance + srcIncome - srcExpense;
     return `
       <div class="source-item">
@@ -937,12 +949,16 @@ function renderGoals() {
     const color = colors[i % colors.length];
     const remaining = Math.max(0, g.target - g.current);
     const deadline = g.deadline ? `· Due ${new Date(g.deadline).toLocaleDateString('en-PH', { month: 'short', year: 'numeric' })}` : '';
+    const src = g.sourceId ? state.sources.find(s => String(s.id) === String(g.sourceId)) : null;
+    const srcBadge = src ? `<span style="font-size:10px;background:rgba(124,106,255,0.15);color:var(--accent);border-radius:6px;padding:2px 7px;border:1px solid rgba(124,106,255,0.25)">${SOURCE_ICONS[src.type]||'💳'} ${src.name}</span>` : '';
+    const monthlyBadge = g.monthly ? `<span style="font-size:10px;background:rgba(106,255,184,0.1);color:var(--accent3);border-radius:6px;padding:2px 7px;border:1px solid rgba(106,255,184,0.2)">${fmtMoney(g.monthly)}/mo</span>` : '';
     return `
       <div class="goal-card">
         <div class="goal-header">
           <div class="goal-title">${g.emoji || '🎯'} ${g.name}</div>
           <div class="goal-pct">${pct}%</div>
         </div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:6px">${srcBadge}${monthlyBadge}</div>
         <div class="goal-sub">${fmtMoney(g.current)} of ${fmtMoney(g.target)} ${deadline}</div>
         <div class="progress-track"><div class="progress-fill" style="width:${pct}%;background:${color}"></div></div>
         <div class="progress-labels">
@@ -950,7 +966,7 @@ function renderGoals() {
           <span>${fmtMoney(remaining)} to go</span>
         </div>
         <div style="display:flex;gap:8px;margin-top:12px">
-          <button class="btn btn-secondary" style="flex:1;padding:9px;font-size:12px" onclick="addToGoal(${i})">+ Add</button>
+          <button class="btn btn-secondary" style="flex:1;padding:9px;font-size:12px" onclick="addToGoal(${i})">+ Add Funds</button>
           <button class="btn btn-danger" style="flex:0;padding:9px 14px;font-size:12px" onclick="deleteGoal(${i})">🗑</button>
         </div>
       </div>`;
@@ -1039,11 +1055,13 @@ function addGoal() {
   const target = parseFloat(document.getElementById('goal-target').value);
   const current = parseFloat(document.getElementById('goal-current').value) || 0;
   const deadline = document.getElementById('goal-deadline').value;
+  const sourceId = document.getElementById('goal-source').value;
+  const monthly = parseFloat(document.getElementById('goal-monthly').value) || 0;
 
   if (!name) { showToast('Enter a goal name'); return; }
   if (!target || target <= 0) { showToast('Enter a target amount'); return; }
 
-  const g = { id: Date.now(), name, target, current, deadline, emoji: state.selectedGoalEmoji };
+  const g = { id: Date.now(), name, target, current, deadline, emoji: state.selectedGoalEmoji, sourceId, monthly };
   state.goals.push(g);
   save(); render();
   closeModal('add-goal-modal');
@@ -1051,17 +1069,38 @@ function addGoal() {
   document.getElementById('goal-name').value = '';
   document.getElementById('goal-target').value = '';
   document.getElementById('goal-current').value = '';
+  document.getElementById('goal-monthly').value = '';
   appendGoalToSheet(g);
 }
 
 function addToGoal(i) {
-  const amt = parseFloat(prompt('Add amount to goal:'));
-  if (!isNaN(amt) && amt > 0) {
-    state.goals[i].current = (state.goals[i].current || 0) + amt;
-    save(); renderGoals();
+  const g = state.goals[i];
+  const amt = parseFloat(prompt(`Add amount to "${g.name}":`));
+  if (isNaN(amt) || amt <= 0) return;
+
+  state.goals[i].current = (state.goals[i].current || 0) + amt;
+
+  // If a source is linked, log an expense transaction from that account
+  if (g.sourceId) {
+    const src = state.sources.find(s => String(s.id) === String(g.sourceId));
+    const txn = {
+      id: Date.now(),
+      type: 'expense',
+      amount: amt,
+      desc: `Savings: ${g.name}`,
+      category: '🛡️ Savings',
+      source: g.sourceId,
+      date: new Date().toISOString().split('T')[0]
+    };
+    state.transactions.push(txn);
+    appendTxnToSheet(txn);
+    showToast(`${fmtMoney(amt)} moved from ${src ? src.name : 'account'} → ${g.name}`);
+  } else {
     showToast('Added ' + fmtMoney(amt) + ' to goal!');
-    updateGoalInSheet(state.goals[i]);
   }
+
+  save(); render();
+  updateGoalInSheet(state.goals[i]);
 }
 
 function deleteGoal(i) {
@@ -1313,7 +1352,7 @@ async function createNewSheet() {
 
 async function writeSheetHeaders(sid) {
   const txnHeaders = [['ID','Date','Type','Description','Category','Amount','Source','Source Name']];
-  const goalHeaders = [['ID','Name','Emoji','Target','Saved','Remaining','% Complete','Deadline']];
+  const goalHeaders = [['ID','Name','Emoji','Target','Saved','Remaining','% Complete','Deadline','Linked Source','Monthly Target']];
   const srcHeaders  = [['ID','Name','Type','Starting Balance','Color']];
 
   await batchUpdate(sid, [
@@ -1423,7 +1462,7 @@ async function appendSheetRow(tab, values) {
 // Delete a row by finding its ID, then deleting that row index
 async function deleteSheetRowById(tab, sheetNumericId, id) {
   const rowNum = await findRowById(tab, id);
-  if (rowNum === -1) return;
+  if (rowNum === -1) { console.warn('Row not found for id', id, 'in', tab); return; }
   await sheetRequest('POST', ':batchUpdate', {
     requests: [{
       deleteDimension: {
@@ -1435,8 +1474,8 @@ async function deleteSheetRowById(tab, sheetNumericId, id) {
 
 // ── TRANSACTION SHEET OPS ──
 function txnToRow(t) {
-  const src = state.sources.find(s => s.id === t.source);
-  return [t.id, t.date, t.type, t.desc || '', t.category || '', t.amount, t.source, src ? src.name : ''];
+  const src = state.sources.find(s => String(s.id) === String(t.source));
+  return [String(t.id), t.date, t.type, t.desc || '', t.category || '', t.amount, String(t.source), src ? src.name : ''];
 }
 
 async function appendTxnToSheet(t) {
@@ -1462,7 +1501,8 @@ async function deleteTxnFromSheet(id) {
 // ── GOAL SHEET OPS ──
 function goalToRow(g) {
   const pct = g.target ? Math.round((g.current / g.target) * 100) : 0;
-  return [g.id, g.name, g.emoji || '', g.target, g.current, Math.max(0, g.target - g.current), pct + '%', g.deadline || ''];
+  const src = g.sourceId ? state.sources.find(s => String(s.id) === String(g.sourceId)) : null;
+  return [String(g.id), g.name, g.emoji || '', g.target, g.current, Math.max(0, g.target - g.current), pct + '%', g.deadline || '', src ? src.name : '', g.monthly || 0];
 }
 
 async function appendGoalToSheet(g) {
@@ -1624,6 +1664,9 @@ function openModal(id) {
   if (id === 'add-goal-modal') {
     renderGoalEmojiChips();
     document.getElementById('form-currency-goal').textContent = state.currency;
+    const sel = document.getElementById('goal-source');
+    sel.innerHTML = '<option value="">— None —</option>' +
+      state.sources.map(s => `<option value="${s.id}">${SOURCE_ICONS[s.type]||'💳'} ${s.name}</option>`).join('');
   }
 }
 function closeModal(id) {
