@@ -710,29 +710,18 @@
     <!-- Step 0: Not signed in -->
     <div id="gsheet-step-signin">
       <p style="font-size:13px;color:var(--text2);margin-bottom:18px;line-height:1.7">
-        Sign in with Google to create a new spreadsheet that becomes your live raw data file — every transaction you log here syncs to it automatically.
+        Sign in with Google to create a new spreadsheet in your Drive. Every transaction, goal, and source will sync to it automatically.
       </p>
-
-      <!-- Client ID Setup -->
-      <div id="gsheet-clientid-section">
-        <div style="background:rgba(255,184,106,0.08);border:1px solid rgba(255,184,106,0.25);border-radius:10px;padding:12px;margin-bottom:14px;font-size:11px;color:var(--text2);line-height:1.8">
-          <strong style="color:var(--accent4)">⚙️ One-time setup required</strong><br>
-          To connect Google Sheets, enter your Google OAuth Client ID.<br>
-          <span style="color:var(--text3)">Get one free at <strong style="color:var(--accent4)">console.cloud.google.com</strong> → APIs & Services → Credentials → Create OAuth 2.0 Client ID (Web App). Add this page's URL as an authorized origin.</span>
-        </div>
-        <div class="form-group">
-          <label>Google OAuth Client ID</label>
-          <input type="text" id="gapi-client-id" placeholder="xxxxx.apps.googleusercontent.com" />
-        </div>
-        <button class="btn btn-primary" onclick="initGoogleAuth()" id="gapi-init-btn">Continue →</button>
-        <div class="divider"></div>
-        <div style="font-size:12px;color:var(--text3);text-align:center;margin-bottom:6px">— or link an existing sheet manually —</div>
-        <div class="form-group">
-          <label>Paste Google Sheets URL</label>
-          <input type="url" id="sheets-url-input" placeholder="https://docs.google.com/spreadsheets/d/..." />
-        </div>
-        <button class="btn btn-secondary" onclick="saveSheetLink()">Link Manually</button>
+      <button class="btn btn-primary" onclick="initGoogleAuth()" id="gapi-init-btn">
+        <span>🔑 Sign in with Google</span>
+      </button>
+      <div class="divider"></div>
+      <div style="font-size:12px;color:var(--text3);text-align:center;margin-bottom:10px">— or link an existing sheet manually —</div>
+      <div class="form-group">
+        <label>Paste Google Sheets URL</label>
+        <input type="url" id="sheets-url-input" placeholder="https://docs.google.com/spreadsheets/d/..." />
       </div>
+      <button class="btn btn-secondary" onclick="saveSheetLink()">Link Manually</button>
     </div>
 
     <!-- Step 1: Signed in, no sheet yet -->
@@ -786,6 +775,9 @@
 </div>
 
 <script>
+// ── GOOGLE CLIENT ID ── Replace with your actual Client ID ──
+const GOOGLE_CLIENT_ID = '516815100230-ll2teblmpk6c792monn88secpuk0np2d.apps.googleusercontent.com';
+
 // ── STATE ──
 let state = {
   transactions: [],
@@ -1236,20 +1228,19 @@ let gAccessToken = null;
 let gUserName = '';
 
 function initGoogleAuth() {
-  const clientId = document.getElementById('gapi-client-id').value.trim();
-  if (!clientId) { showToast('Enter your Google Client ID'); return; }
+  const clientId = GOOGLE_CLIENT_ID;
   state.googleClientId = clientId;
   save();
 
   const btn = document.getElementById('gapi-init-btn');
-  btn.textContent = 'Loading…';
+  btn.textContent = 'Connecting…';
   btn.disabled = true;
 
   if (!window.google) {
     const s = document.createElement('script');
     s.src = 'https://accounts.google.com/gsi/client';
     s.onload = () => startGoogleAuth(clientId, btn);
-    s.onerror = () => { showToast('Failed to load Google SDK'); btn.textContent = 'Continue →'; btn.disabled = false; };
+    s.onerror = () => { showToast('Failed to load Google SDK'); btn.textContent = 'Connect Google'; btn.disabled = false; };
     document.head.appendChild(s);
   } else {
     startGoogleAuth(clientId, btn);
@@ -1588,12 +1579,13 @@ async function syncAllToSheet() {
 // Re-authenticate silently using saved client ID, then run a callback
 function reAuthAndRun(callback) {
   return new Promise((resolve) => {
+    const clientId = state.googleClientId || GOOGLE_CLIENT_ID;
     const tryAuth = () => {
       try {
         const client = google.accounts.oauth2.initTokenClient({
-          client_id: state.googleClientId,
+          client_id: clientId,
           scope: 'https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/userinfo.profile',
-          prompt: '',  // empty = silent re-auth if session still valid, else shows popup
+          prompt: '',
           callback: async (resp) => {
             if (resp.error) { showToast('Auth failed: ' + resp.error); resolve(); return; }
             gAccessToken = resp.access_token;
@@ -1682,9 +1674,10 @@ function updateSheetsUI() {
     document.getElementById('linked-sheet-url-display').textContent = state.sheetsUrl;
   }
 
-  // Restore client ID if saved
-  const cidEl = document.getElementById('gapi-client-id');
-  if (cidEl && state.googleClientId) cidEl.value = state.googleClientId;
+  // Always ensure clientId is saved from the constant
+  if (!state.googleClientId) {
+    state.googleClientId = GOOGLE_CLIENT_ID;
+  }
 }
 
 function changeCurrency(c) {
