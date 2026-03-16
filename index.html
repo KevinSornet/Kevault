@@ -279,8 +279,9 @@
     cursor: pointer; text-align: center;
     transition: all 0.2s;
   }
-  .type-btn.active-expense { background: rgba(255,106,138,0.15); border-color: rgba(255,106,138,0.4); color: var(--accent2); }
-  .type-btn.active-income { background: rgba(106,255,184,0.12); border-color: rgba(106,255,184,0.3); color: var(--accent3); }
+  .type-btn.active-expense  { background: rgba(255,106,138,0.15); border-color: rgba(255,106,138,0.4); color: var(--accent2); }
+  .type-btn.active-income   { background: rgba(106,255,184,0.12); border-color: rgba(106,255,184,0.3); color: var(--accent3); }
+  .type-btn.active-transfer { background: rgba(255,184,106,0.15); border-color: rgba(255,184,106,0.4); color: var(--accent4); }
 
   /* ── CHIP TAGS ── */
   .chip-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
@@ -467,6 +468,22 @@
       </div>
     </div>
 
+    <!-- Transfer Fee Tracker -->
+    <div class="card" style="background:linear-gradient(135deg,rgba(255,184,106,0.08),rgba(255,106,138,0.05));border-color:rgba(255,184,106,0.2);padding:16px 18px;margin-bottom:14px" id="transfer-fee-card">
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <div>
+          <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:0.8px;margin-bottom:4px">Transfer Fees This Month</div>
+          <div style="font-family:'DM Mono',monospace;font-size:24px;font-weight:700;color:var(--accent4)" id="month-fees">₱0.00</div>
+        </div>
+        <div style="text-align:right">
+          <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:0.8px;margin-bottom:4px">Total Transfers</div>
+          <div style="font-family:'DM Mono',monospace;font-size:16px;font-weight:600;color:var(--text2)" id="month-transfers">0</div>
+          <div style="font-size:10px;color:var(--text3);margin-top:2px" id="month-transfer-vol">₱0 moved</div>
+        </div>
+      </div>
+      <div style="margin-top:10px;cursor:pointer;font-size:11px;color:var(--accent4);font-weight:600" onclick="switchPage('transactions');filterTxn('transfer',document.querySelector('#filter-chips .chip[data-f=transfer]'))">View transfer history →</div>
+    </div>
+
     <!-- Sources summary -->
     <div class="section-header">
       <div class="section-title">Sources</div>
@@ -502,9 +519,10 @@
     </div>
     <!-- Filter chips -->
     <div class="chip-row" style="margin-bottom:14px" id="filter-chips">
-      <div class="chip selected" onclick="filterTxn('all',this)">All</div>
-      <div class="chip" onclick="filterTxn('expense',this)">Expenses</div>
-      <div class="chip" onclick="filterTxn('income',this)">Income</div>
+      <div class="chip selected" data-f="all" onclick="filterTxn('all',this)">All</div>
+      <div class="chip" data-f="expense" onclick="filterTxn('expense',this)">Expenses</div>
+      <div class="chip" data-f="income" onclick="filterTxn('income',this)">Income</div>
+      <div class="chip" data-f="transfer" onclick="filterTxn('transfer',this)">🔁 Transfers</div>
     </div>
     <div id="all-txns-list">
       <div class="empty-state">No transactions yet.</div>
@@ -596,34 +614,75 @@
 <div class="modal-overlay" id="add-txn-modal">
   <div class="modal">
     <div class="modal-handle"></div>
-    <div class="modal-title">Add Transaction</div>
-    <div class="type-toggle">
+    <div class="modal-title" id="txn-modal-title">Add Transaction</div>
+    <div class="type-toggle" style="grid-template-columns:1fr 1fr 1fr">
       <button class="type-btn active-expense" id="type-expense" onclick="setType('expense')">💸 Expense</button>
       <button class="type-btn" id="type-income" onclick="setType('income')">💰 Income</button>
+      <button class="type-btn" id="type-transfer" onclick="setType('transfer')">🔁 Transfer</button>
     </div>
-    <div class="form-group">
-      <label>Amount</label>
-      <div class="amount-input-wrap">
-        <span class="currency-sym" id="form-currency">₱</span>
-        <input type="number" id="txn-amount" placeholder="0.00" inputmode="decimal" />
+
+    <!-- Regular fields (expense/income) -->
+    <div id="txn-regular-fields">
+      <div class="form-group">
+        <label>Amount</label>
+        <div class="amount-input-wrap">
+          <span class="currency-sym" id="form-currency">₱</span>
+          <input type="number" id="txn-amount" placeholder="0.00" inputmode="decimal" />
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Description</label>
+        <input type="text" id="txn-desc" placeholder="e.g. Grocery run, Salary..." />
+      </div>
+      <div class="form-group">
+        <label>Category</label>
+        <div class="chip-row" id="category-chips"></div>
+      </div>
+      <div class="form-group">
+        <label>Source / Account</label>
+        <select id="txn-source"></select>
+      </div>
+      <div class="form-group">
+        <label>Date</label>
+        <input type="date" id="txn-date" />
       </div>
     </div>
-    <div class="form-group">
-      <label>Description</label>
-      <input type="text" id="txn-desc" placeholder="e.g. Grocery run, Salary..." />
+
+    <!-- Transfer fields -->
+    <div id="txn-transfer-fields" style="display:none">
+      <div class="form-group">
+        <label>Amount to Transfer</label>
+        <div class="amount-input-wrap">
+          <span class="currency-sym" id="form-currency-transfer">₱</span>
+          <input type="number" id="transfer-amount" placeholder="0.00" inputmode="decimal" />
+        </div>
+      </div>
+      <div class="form-group">
+        <label>From Account</label>
+        <select id="transfer-from"></select>
+      </div>
+      <div class="form-group">
+        <label>To Account</label>
+        <select id="transfer-to"></select>
+      </div>
+      <div class="form-group">
+        <label>Service / Transfer Fee</label>
+        <div class="amount-input-wrap">
+          <span class="currency-sym">₱</span>
+          <input type="number" id="transfer-fee" placeholder="0.00" inputmode="decimal" />
+        </div>
+        <div style="font-size:11px;color:var(--text3);margin-top:4px">Fee is deducted from the From account and tracked separately.</div>
+      </div>
+      <div class="form-group">
+        <label>Note (optional)</label>
+        <input type="text" id="transfer-note" placeholder="e.g. GCash to BDO..." />
+      </div>
+      <div class="form-group">
+        <label>Date</label>
+        <input type="date" id="transfer-date" />
+      </div>
     </div>
-    <div class="form-group">
-      <label>Category</label>
-      <div class="chip-row" id="category-chips"></div>
-    </div>
-    <div class="form-group">
-      <label>Source / Account</label>
-      <select id="txn-source"></select>
-    </div>
-    <div class="form-group">
-      <label>Date</label>
-      <input type="date" id="txn-date" />
-    </div>
+
     <button class="btn btn-primary" onclick="addTransaction()">Save Transaction</button>
     <button class="btn btn-secondary" style="margin-top:8px" onclick="closeModal('add-txn-modal')">Cancel</button>
   </div>
@@ -867,32 +926,49 @@ function fmtMoney(n) {
 function updateStats() {
   const now = new Date();
   const thisMonth = now.getMonth();
-  const thisYear = now.getFullYear();
+  const thisYear  = now.getFullYear();
 
   const monthTxns = state.transactions.filter(t => {
     const d = new Date(t.date);
     return d.getMonth() === thisMonth && d.getFullYear() === thisYear;
   });
 
-  const expenses = monthTxns.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
-  const income = monthTxns.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0);
+  const expenses  = monthTxns.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
+  const income    = monthTxns.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0);
 
-  // Fix: coerce IDs to strings for reliable comparison
+  // Transfer fees this month
+  const monthFees = monthTxns.filter(t => t.type === 'transfer' && t.subtype === 'fee').reduce((s, t) => s + t.amount, 0);
+  // Transfer volume (out legs only, no double-count)
+  const monthTransferOuts = monthTxns.filter(t => t.type === 'transfer' && t.subtype === 'out');
+  const monthTransferVol  = monthTransferOuts.reduce((s, t) => s + t.amount, 0);
+
+  // Net worth: base balances + income - expenses - transfer fees (transfers themselves are neutral)
   const totalBalance = state.sources.reduce((s, src) => {
     const sid = String(src.id);
-    const srcIncome  = state.transactions.filter(t => t.type === 'income'  && String(t.source) === sid).reduce((a, t) => a + t.amount, 0);
-    const srcExpense = state.transactions.filter(t => t.type === 'expense' && String(t.source) === sid).reduce((a, t) => a + t.amount, 0);
-    return s + src.balance + srcIncome - srcExpense;
+    const srcIncome    = state.transactions.filter(t => t.type === 'income'  && String(t.source) === sid).reduce((a, t) => a + t.amount, 0);
+    const srcExpense   = state.transactions.filter(t => t.type === 'expense' && String(t.source) === sid).reduce((a, t) => a + t.amount, 0);
+    // Transfer out reduces this account, transfer in increases it, fee reduces it
+    const transferOut  = state.transactions.filter(t => t.type === 'transfer' && t.subtype === 'out' && String(t.source) === sid).reduce((a, t) => a + t.amount, 0);
+    const transferIn   = state.transactions.filter(t => t.type === 'transfer' && t.subtype === 'in'  && String(t.source) === sid).reduce((a, t) => a + t.amount, 0);
+    const transferFee  = state.transactions.filter(t => t.type === 'transfer' && t.subtype === 'fee' && String(t.source) === sid).reduce((a, t) => a + t.amount, 0);
+    return s + src.balance + srcIncome - srcExpense - transferOut + transferIn - transferFee;
   }, 0);
 
-  document.getElementById('net-worth').textContent = formatNum(totalBalance);
+  document.getElementById('net-worth').textContent     = formatNum(totalBalance);
   document.getElementById('month-expense').textContent = fmtMoney(expenses);
-  document.getElementById('month-income').textContent = fmtMoney(income);
+  document.getElementById('month-income').textContent  = fmtMoney(income);
+  document.getElementById('month-fees').textContent    = fmtMoney(monthFees);
+  document.getElementById('month-transfers').textContent = monthTransferOuts.length;
+  document.getElementById('month-transfer-vol').textContent = fmtMoney(monthTransferVol) + ' moved';
+
+  // Hide fee card if no transfers ever
+  const hasTransfers = state.transactions.some(t => t.type === 'transfer');
+  document.getElementById('transfer-fee-card').style.display = hasTransfers ? 'block' : 'none';
 
   const diff = income - expenses;
   const chEl = document.getElementById('balance-change');
-  chEl.style.color = diff >= 0 ? 'var(--accent3)' : 'var(--accent2)';
-  chEl.textContent = (diff >= 0 ? '↑ +' : '↓ ') + fmtMoney(Math.abs(diff)) + ' this month';
+  chEl.style.color   = diff >= 0 ? 'var(--accent3)' : 'var(--accent2)';
+  chEl.textContent   = (diff >= 0 ? '↑ +' : '↓ ') + fmtMoney(Math.abs(diff)) + ' this month';
 }
 
 function formatNum(n) {
@@ -907,9 +983,12 @@ function renderSources() {
   }
   el.innerHTML = state.sources.map(src => {
     const sid = String(src.id);
-    const srcIncome  = state.transactions.filter(t => t.type === 'income'  && String(t.source) === sid).reduce((a, t) => a + t.amount, 0);
-    const srcExpense = state.transactions.filter(t => t.type === 'expense' && String(t.source) === sid).reduce((a, t) => a + t.amount, 0);
-    const bal = src.balance + srcIncome - srcExpense;
+    const srcIncome   = state.transactions.filter(t => t.type === 'income'  && String(t.source) === sid).reduce((a, t) => a + t.amount, 0);
+    const srcExpense  = state.transactions.filter(t => t.type === 'expense' && String(t.source) === sid).reduce((a, t) => a + t.amount, 0);
+    const transferOut = state.transactions.filter(t => t.type === 'transfer' && t.subtype === 'out' && String(t.source) === sid).reduce((a, t) => a + t.amount, 0);
+    const transferIn  = state.transactions.filter(t => t.type === 'transfer' && t.subtype === 'in'  && String(t.source) === sid).reduce((a, t) => a + t.amount, 0);
+    const transferFee = state.transactions.filter(t => t.type === 'transfer' && t.subtype === 'fee' && String(t.source) === sid).reduce((a, t) => a + t.amount, 0);
+    const bal = src.balance + srcIncome - srcExpense - transferOut + transferIn - transferFee;
     return `
       <div class="source-item">
         <div class="source-color-dot" style="background:${src.color}"></div>
@@ -925,10 +1004,17 @@ function renderSources() {
 function renderTransactions(filter) {
   filter = filter || state.txnFilter;
   let txns = [...state.transactions].sort((a, b) => new Date(b.date) - new Date(a.date));
-  if (filter === 'expense') txns = txns.filter(t => t.type === 'expense');
-  if (filter === 'income') txns = txns.filter(t => t.type === 'income');
+  if (filter === 'expense')  txns = txns.filter(t => t.type === 'expense');
+  if (filter === 'income')   txns = txns.filter(t => t.type === 'income');
+  if (filter === 'transfer') txns = txns.filter(t => t.type === 'transfer');
+  // In "all" mode, hide transfer-in duplicates to avoid confusion (show out + fee only)
+  if (filter === 'all') txns = txns.filter(t => t.subtype !== 'in');
 
-  const recent = txns.slice(0, 5);
+  const recent = [...state.transactions]
+    .sort((a, b) => new Date(b.date) - new Date(a.date))
+    .filter(t => t.subtype !== 'in')
+    .slice(0, 5);
+
   const recentEl = document.getElementById('recent-txns');
   recentEl.innerHTML = recent.length ? recent.map(txnHTML).join('') : '<div class="empty-state">No transactions yet.<br>Tap + to add one!</div>';
 
@@ -937,26 +1023,41 @@ function renderTransactions(filter) {
 }
 
 function txnHTML(t) {
+  const isTransfer = t.type === 'transfer';
   const cat = t.category || '💼';
-  const emoji = cat.split(' ')[0];
-  const bgColors = { expense: 'rgba(255,106,138,0.12)', income: 'rgba(106,255,184,0.1)' };
-  const src = state.sources.find(s => s.id === t.source);
+  const emoji = isTransfer
+    ? (t.subtype === 'fee' ? '🏧' : t.subtype === 'out' ? '⬆️' : '⬇️')
+    : cat.split(' ')[0];
+  const bgColors = { expense:'rgba(255,106,138,0.12)', income:'rgba(106,255,184,0.1)', transfer:'rgba(255,184,106,0.12)' };
+  const src = state.sources.find(s => String(s.id) === String(t.source));
   const srcName = src ? src.name : 'Unknown';
-  const sign = t.type === 'expense' ? '-' : '+';
-  const cls = t.type === 'expense' ? 'negative' : 'positive';
   const dateStr = new Date(t.date).toLocaleDateString('en-PH', { month: 'short', day: 'numeric' });
+
+  let amountStr, amountCls;
+  if (isTransfer) {
+    amountStr = (t.subtype === 'in' ? '+' : '-') + fmtMoney(t.amount);
+    amountCls  = t.subtype === 'in' ? 'positive' : 'negative';
+  } else {
+    amountStr = (t.type === 'expense' ? '-' : '+') + fmtMoney(t.amount);
+    amountCls  = t.type === 'expense' ? 'negative' : 'positive';
+  }
+
+  const subtypeLabel = isTransfer
+    ? (t.subtype === 'fee' ? ' · Fee' : t.subtype === 'out' ? ' · Out' : ' · In') : '';
+
+  const canEdit = !isTransfer;
   return `
     <div class="tx-item" id="txn-${t.id}">
-      <div class="tx-icon" style="background:${bgColors[t.type]}">${emoji}</div>
+      <div class="tx-icon" style="background:${bgColors[t.type] || bgColors.expense}">${emoji}</div>
       <div class="tx-info">
         <div class="tx-name">${t.desc || cat}</div>
-        <div class="tx-meta">${dateStr} · ${srcName}</div>
+        <div class="tx-meta">${dateStr} · ${srcName}${subtypeLabel}</div>
       </div>
       <div style="display:flex;align-items:center;gap:8px">
-        <div class="tx-amount ${cls}">${sign}${fmtMoney(t.amount)}</div>
+        <div class="tx-amount ${amountCls}">${amountStr}</div>
         <div style="display:flex;gap:4px">
-          <div onclick="openEditTxn(${t.id})" style="cursor:pointer;font-size:13px;opacity:0.5;padding:4px" title="Edit">✏️</div>
-          <div onclick="deleteTxn(${t.id})" style="cursor:pointer;font-size:13px;opacity:0.5;padding:4px" title="Delete">🗑</div>
+          ${canEdit ? `<div onclick="openEditTxn(${t.id})" style="cursor:pointer;font-size:13px;opacity:0.5;padding:4px">✏️</div>` : ''}
+          <div onclick="deleteTxn(${t.id})" style="cursor:pointer;font-size:13px;opacity:0.5;padding:4px">🗑</div>
         </div>
       </div>
     </div>`;
@@ -1029,8 +1130,16 @@ function renderChart() {
 function setType(type) {
   state.txnType = type;
   document.getElementById('type-expense').className = 'type-btn' + (type === 'expense' ? ' active-expense' : '');
-  document.getElementById('type-income').className = 'type-btn' + (type === 'income' ? ' active-income' : '');
-  renderCategoryChips();
+  document.getElementById('type-income').className  = 'type-btn' + (type === 'income'  ? ' active-income'  : '');
+  document.getElementById('type-transfer').className = 'type-btn' + (type === 'transfer' ? ' active-transfer' : '');
+
+  const isTransfer = type === 'transfer';
+  document.getElementById('txn-regular-fields').style.display  = isTransfer ? 'none' : 'block';
+  document.getElementById('txn-transfer-fields').style.display = isTransfer ? 'block' : 'none';
+  document.getElementById('txn-modal-title').textContent = isTransfer ? 'Transfer Between Accounts' : 'Add Transaction';
+
+  if (isTransfer) populateTransferSelects();
+  else renderCategoryChips();
 }
 
 function renderCategoryChips() {
@@ -1047,10 +1156,55 @@ function selectCat(el, cat) {
 }
 
 function addTransaction() {
+  // ── TRANSFER ──
+  if (state.txnType === 'transfer') {
+    const amount  = parseFloat(document.getElementById('transfer-amount').value);
+    const fee     = parseFloat(document.getElementById('transfer-fee').value) || 0;
+    const fromId  = document.getElementById('transfer-from').value;
+    const toId    = document.getElementById('transfer-to').value;
+    const note    = document.getElementById('transfer-note').value.trim();
+    const date    = document.getElementById('transfer-date').value || new Date().toISOString().split('T')[0];
+
+    if (!amount || amount <= 0) { showToast('Enter a transfer amount'); return; }
+    if (!fromId || !toId)       { showToast('Select both accounts'); return; }
+    if (fromId === toId)        { showToast('From and To must be different accounts'); return; }
+
+    const fromSrc = state.sources.find(s => String(s.id) === String(fromId));
+    const toSrc   = state.sources.find(s => String(s.id) === String(toId));
+    const label   = note || `${fromSrc?.name || 'Account'} → ${toSrc?.name || 'Account'}`;
+    const groupId = Date.now();
+
+    // Debit from source
+    const outTxn = { id: groupId, type: 'transfer', subtype: 'out', amount, desc: label, category: '🔁 Transfer', source: fromId, date, transferGroup: groupId, fee };
+    // Credit to destination
+    const inTxn  = { id: groupId + 1, type: 'transfer', subtype: 'in', amount, desc: label, category: '🔁 Transfer', source: toId, date, transferGroup: groupId, fee: 0 };
+    // Fee as separate expense on from account
+    let feeTxn = null;
+    if (fee > 0) {
+      feeTxn = { id: groupId + 2, type: 'transfer', subtype: 'fee', amount: fee, desc: `Transfer Fee: ${label}`, category: '🏧 Transfer Fee', source: fromId, date, transferGroup: groupId, fee };
+    }
+
+    state.transactions.push(outTxn, inTxn);
+    if (feeTxn) state.transactions.push(feeTxn);
+
+    save(); render();
+    closeModal('add-txn-modal');
+    showToast(`🔁 Transferred ${fmtMoney(amount)}${fee > 0 ? ` · Fee: ${fmtMoney(fee)}` : ''}`);
+    appendTxnToSheet(outTxn);
+    appendTxnToSheet(inTxn);
+    if (feeTxn) appendTxnToSheet(feeTxn);
+
+    document.getElementById('transfer-amount').value = '';
+    document.getElementById('transfer-fee').value = '';
+    document.getElementById('transfer-note').value = '';
+    return;
+  }
+
+  // ── EXPENSE / INCOME ──
   const amount = parseFloat(document.getElementById('txn-amount').value);
-  const desc = document.getElementById('txn-desc').value.trim();
+  const desc   = document.getElementById('txn-desc').value.trim();
   const source = document.getElementById('txn-source').value;
-  const date = document.getElementById('txn-date').value || new Date().toISOString().split('T')[0];
+  const date   = document.getElementById('txn-date').value || new Date().toISOString().split('T')[0];
 
   if (!amount || amount <= 0) { showToast('Enter a valid amount'); return; }
   if (!source) { showToast('Select a source account'); return; }
@@ -1203,6 +1357,16 @@ function populateSourceSelect() {
   el.innerHTML = state.sources.length
     ? state.sources.map(s => `<option value="${s.id}">${SOURCE_ICONS[s.type]} ${s.name}</option>`).join('')
     : '<option value="">— Add a source first —</option>';
+}
+
+function populateTransferSelects() {
+  const opts = state.sources.length
+    ? state.sources.map(s => `<option value="${s.id}">${SOURCE_ICONS[s.type]} ${s.name}</option>`).join('')
+    : '<option value="">— Add a source first —</option>';
+  document.getElementById('transfer-from').innerHTML = opts;
+  document.getElementById('transfer-to').innerHTML = opts;
+  document.getElementById('transfer-date').value = new Date().toISOString().split('T')[0];
+  document.getElementById('form-currency-transfer').textContent = state.currency;
 }
 
 function deleteTxn(id) {
