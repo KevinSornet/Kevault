@@ -2099,52 +2099,62 @@ function renderSrcGoals(sid, src, currentBal) {
   }
   section.style.display = 'block';
 
-  // Total committed to goals vs total balance
-  const totalTargets   = linkedGoals.reduce((s, g) => s + g.target, 0);
-  const totalSaved     = linkedGoals.reduce((s, g) => s + g.current, 0);
-  const totalRemaining = linkedGoals.reduce((s, g) => s + Math.max(0, g.target - g.current), 0);
-
-  // Summary bar — how much of the current balance is "spoken for" by goals
-  const spokenFor    = Math.min(totalRemaining, Math.max(0, currentBal));
-  const freeBalance  = Math.max(0, currentBal - totalRemaining);
-  const spokenPct    = currentBal > 0 ? Math.round((spokenFor / currentBal) * 100) : 0;
-
+  // Balance allocation — only based on what's currently saved in each goal
+  const totalSaved  = linkedGoals.reduce((s, g) => s + g.current, 0);
+  const unallocated = Math.max(0, currentBal - totalSaved);
   const colors = ['var(--accent)', 'var(--accent2)', 'var(--accent3)', 'var(--accent4)', '#6ab8ff', '#e96aff'];
+
+  // Per-goal slices with color and percentage of current balance
+  const goalSlices = linkedGoals.map((g, i) => ({
+    ...g, color: colors[i % colors.length],
+    pct: currentBal > 0 ? Math.round((g.current / currentBal) * 100) : 0
+  }));
+  const unallocatedPct = Math.max(0, 100 - goalSlices.reduce((s, g) => s + g.pct, 0));
 
   list.innerHTML = `
     <!-- Balance allocation overview -->
     <div style="background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:14px;margin-bottom:12px">
-      <div style="font-size:11px;color:var(--text2);margin-bottom:8px;font-weight:700">Balance Allocation</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:10px">
-        <div style="text-align:center">
-          <div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:3px">Current Balance</div>
-          <div style="font-family:'DM Mono',monospace;font-size:13px;font-weight:700;color:var(--text)">${fmtMoney(currentBal)}</div>
-        </div>
-        <div style="text-align:center">
-          <div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:3px">Needed for Goals</div>
-          <div style="font-family:'DM Mono',monospace;font-size:13px;font-weight:700;color:var(--accent2)">${fmtMoney(totalRemaining)}</div>
-        </div>
-        <div style="text-align:center">
-          <div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:3px">Freely Available</div>
-          <div style="font-family:'DM Mono',monospace;font-size:13px;font-weight:700;color:${freeBalance >= 0 ? 'var(--accent3)' : 'var(--accent2)'}">${fmtMoney(freeBalance)}</div>
-        </div>
+      <div style="font-size:11px;color:var(--text2);margin-bottom:10px;font-weight:700">Balance Allocation
+        <span style="font-weight:400;color:var(--text3);margin-left:6px">${fmtMoney(currentBal)} total</span>
       </div>
-      <!-- Stacked allocation bar -->
-      <div style="height:8px;background:var(--surface);border-radius:10px;overflow:hidden;display:flex">
-        <div style="width:${spokenPct}%;background:var(--accent2);transition:width 0.7s ease"></div>
-        <div style="flex:1;background:var(--accent3);opacity:0.5"></div>
+
+      <!-- Multi-segment bar -->
+      <div style="height:10px;background:var(--surface);border-radius:10px;overflow:hidden;display:flex;margin-bottom:10px">
+        ${goalSlices.map(g => g.pct > 0 ? `<div style="width:${g.pct}%;background:${g.color};transition:width 0.7s ease"></div>` : '').join('')}
+        ${unallocatedPct > 0 ? `<div style="flex:1;background:var(--border);opacity:0.8"></div>` : ''}
       </div>
-      <div style="display:flex;justify-content:space-between;margin-top:5px;font-size:9px;color:var(--text3)">
-        <span style="color:var(--accent2)">▪ ${spokenPct}% allocated to goals</span>
-        <span style="color:var(--accent3)">▪ ${100 - spokenPct}% free</span>
+
+      <!-- Per-goal legend rows -->
+      ${goalSlices.map(g => `
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--border)">
+          <div style="display:flex;align-items:center;gap:8px">
+            <div style="width:10px;height:10px;border-radius:3px;background:${g.color};flex-shrink:0"></div>
+            <div style="font-size:12px;font-weight:600">${g.emoji || '🎯'} ${g.name}</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:10px">
+            <div style="font-size:11px;color:var(--text3)">${g.pct}%</div>
+            <div style="font-family:'DM Mono',monospace;font-size:12px;font-weight:700;color:${g.color}">${fmtMoney(g.current)}</div>
+          </div>
+        </div>`).join('')}
+
+      <!-- Unallocated row -->
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:5px 0">
+        <div style="display:flex;align-items:center;gap:8px">
+          <div style="width:10px;height:10px;border-radius:3px;background:var(--border);flex-shrink:0"></div>
+          <div style="font-size:12px;font-weight:600;color:var(--text2)">Unallocated</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px">
+          <div style="font-size:11px;color:var(--text3)">${unallocatedPct}%</div>
+          <div style="font-family:'DM Mono',monospace;font-size:12px;font-weight:700;color:var(--text2)">${fmtMoney(unallocated)}</div>
+        </div>
       </div>
     </div>
 
     <!-- Individual goal cards -->
-    ${linkedGoals.map((g, i) => {
+    ${goalSlices.map((g) => {
       const pct       = g.target > 0 ? Math.min(100, Math.round((g.current / g.target) * 100)) : 0;
       const remaining = Math.max(0, g.target - g.current);
-      const color     = colors[i % colors.length];
+      const color     = g.color;
       const deadline  = g.deadline ? new Date(g.deadline).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' }) : null;
 
       // Savings txns that were contributed to this goal from this source
