@@ -639,7 +639,7 @@
           <div style="font-size:14px;font-weight:800" id="day-detail-title">—</div>
           <div onclick="closeDayDetail()" style="cursor:pointer;color:var(--text3);font-size:16px;padding:2px 6px">✕</div>
         </div>
-        <div id="day-detail-stats" style="display:flex;gap:10px;margin-bottom:12px"></div>
+        <div id="day-detail-stats" style="margin-bottom:12px"></div>
         <div id="day-detail-txns"></div>
       </div>
     </div>
@@ -1138,6 +1138,7 @@ const CATEGORIES = {
     '💊 Health & Medical',
     '🎮 Entertainment',
     '📱 Subscriptions',
+    '📞 Phone Plan & Add-ons',
     '📚 Education',
     '🔧 Utilities & Bills',
     '💼 Work & Business',
@@ -1585,13 +1586,24 @@ function openDayDetail(day) {
 
   document.getElementById('day-detail-title').textContent = dateStr;
 
-  let statsHtml = '';
-  if (totalInc > 0)  statsHtml += `<div style="background:rgba(106,255,184,0.1);border:1px solid rgba(106,255,184,0.2);border-radius:8px;padding:8px 10px;flex:1;text-align:center"><div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:3px">Income</div><div style="font-family:'DM Mono',monospace;font-size:13px;font-weight:700;color:var(--accent3)">${fmtMoney(totalInc)}</div></div>`;
-  if (totalExp > 0)  statsHtml += `<div style="background:rgba(255,106,138,0.08);border:1px solid rgba(255,106,138,0.2);border-radius:8px;padding:8px 10px;flex:1;text-align:center"><div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:3px">Spent</div><div style="font-family:'DM Mono',monospace;font-size:13px;font-weight:700;color:var(--accent2)">${fmtMoney(totalExp)}</div></div>`;
-  if (totalTrf > 0)  statsHtml += `<div style="background:rgba(255,184,106,0.08);border:1px solid rgba(255,184,106,0.2);border-radius:8px;padding:8px 10px;flex:1;text-align:center"><div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:3px">Transfer</div><div style="font-family:'DM Mono',monospace;font-size:13px;font-weight:700;color:var(--accent4)">${fmtMoney(totalTrf)}</div></div>`;
-  if (totalInc > 0 && totalExp > 0) statsHtml += `<div style="background:rgba(124,106,255,0.08);border:1px solid rgba(124,106,255,0.2);border-radius:8px;padding:8px 10px;flex:1;text-align:center"><div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:3px">Net</div><div style="font-family:'DM Mono',monospace;font-size:13px;font-weight:700;color:${net>=0?'var(--accent3)':'var(--accent2)'}">${net>=0?'+':''}${fmtMoney(net)}</div></div>`;
+  // Top row: Income / Spent / Transfer
+  let topStats = '';
+  if (totalInc > 0) topStats += `<div style="background:rgba(106,255,184,0.1);border:1px solid rgba(106,255,184,0.2);border-radius:8px;padding:8px 10px;flex:1;text-align:center"><div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:3px">Income</div><div style="font-family:'DM Mono',monospace;font-size:13px;font-weight:700;color:var(--accent3)">${fmtMoney(totalInc)}</div></div>`;
+  if (totalExp > 0) topStats += `<div style="background:rgba(255,106,138,0.08);border:1px solid rgba(255,106,138,0.2);border-radius:8px;padding:8px 10px;flex:1;text-align:center"><div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:3px">Spent</div><div style="font-family:'DM Mono',monospace;font-size:13px;font-weight:700;color:var(--accent2)">${fmtMoney(totalExp)}</div></div>`;
+  if (totalTrf > 0) topStats += `<div style="background:rgba(255,184,106,0.08);border:1px solid rgba(255,184,106,0.2);border-radius:8px;padding:8px 10px;flex:1;text-align:center"><div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:3px">Transfer</div><div style="font-family:'DM Mono',monospace;font-size:13px;font-weight:700;color:var(--accent4)">${fmtMoney(totalTrf)}</div></div>`;
 
-  document.getElementById('day-detail-stats').innerHTML = statsHtml;
+  // Net on its own row if both income and expense exist
+  let netRow = '';
+  if (totalInc > 0 && totalExp > 0) {
+    const netColor = net >= 0 ? 'var(--accent3)' : 'var(--accent2)';
+    netRow = `<div style="background:rgba(124,106,255,0.08);border:1px solid rgba(124,106,255,0.2);border-radius:8px;padding:8px 14px;margin-top:8px;display:flex;justify-content:space-between;align-items:center">
+      <div style="font-size:11px;color:var(--text2);font-weight:700;text-transform:uppercase;letter-spacing:0.5px">Net for the day</div>
+      <div style="font-family:'DM Mono',monospace;font-size:15px;font-weight:800;color:${netColor}">${net>=0?'+':''}${fmtMoney(net)}</div>
+    </div>`;
+  }
+
+  document.getElementById('day-detail-stats').innerHTML =
+    `<div style="display:flex;gap:8px;width:100%">${topStats}</div>${netRow}`;
   document.getElementById('day-detail-txns').innerHTML = txns.length
     ? `<div style="border:1px solid var(--border);border-radius:10px;padding:0 10px">${txns.map(t=>txnHTML(t)).join('')}</div>`
     : '<div class="empty-state" style="padding:14px 0">No transactions</div>';
@@ -1610,7 +1622,7 @@ function closeDayDetail() {
 // ── KEVAI ──
 // KevAI requires a tiny proxy server to make API calls from the browser.
 // See the setup instructions shown in the UI below.
-const KEVAI_PROXY_URL = 'https://kevai-proxy.kevinsornet.workers.dev'; // e.g. 'https://your-worker.workers.dev'
+const KEVAI_PROXY_URL = ''; // e.g. 'https://your-worker.workers.dev'
 
 async function runKevAI() {
   const btn = document.getElementById('kevai-refresh-btn');
@@ -1690,32 +1702,33 @@ function cors() {
 
   const goals = state.goals.map(g => `${g.name}: ${Math.round((g.current/g.target)*100)}% saved`).join(', ');
 
-  const prompt = `You are KevAI, a friendly and sharp personal finance assistant embedded in a budgeting app called Vault. Analyze the user's financial data for ${monthLabel} and give personalized insights.
+  const prompt = `You are KevAI, a friendly personal finance assistant inside a budgeting app called Vault. Analyze this financial data for ${monthLabel} and give personalized insights.
 
-Financial Summary:
+DATA:
 - Total Income: ${fmtMoney(totalInc)}
 - Total Expenses: ${fmtMoney(totalExp)}
 - Net Saved: ${fmtMoney(net)}
 - Savings Rate: ${savingsRate}%
 - Transfer Fees Paid: ${fmtMoney(fees)}
-- Top Expense Categories: ${topCats || 'None'}
-- Account Balances: ${sources || 'None'}
-- Savings Goals Progress: ${goals || 'None set'}
+- Top Expense Categories: ${topCats || 'None recorded'}
+- Account Balances: ${sources || 'No accounts'}
+- Savings Goals: ${goals || 'None set'}
 
-Instructions:
-- Be conversational, warm, and specific — use actual numbers from the data
-- If savings rate > 20%, genuinely praise the user and reinforce good habits
-- If savings rate is 0-20%, give encouraging but honest feedback
-- If net is negative, be gentle but clear about the concern
-- Highlight the biggest expense category and whether it seems reasonable
-- If transfer fees are notable, mention them
-- Give 2-3 concrete, actionable saving tips specific to their spending pattern
-- Comment on goal progress if any goals exist
-- Keep total response concise (5-8 bullet points max)
-- Do NOT use markdown headers or asterisks. Use plain text only.
-- Format your response as a JSON object with this exact structure:
-{"praise":["...","..."],"warnings":["..."],"tips":["...","...","..."]}
-Only output the JSON, nothing else.`;
+INSTRUCTIONS:
+- Be warm, specific, and use the actual numbers above
+- Praise good habits if savings rate > 20%
+- Flag concerns gently if expenses exceed income
+- Give 2-3 actionable saving tips based on the actual spending categories
+- Comment on goal progress if goals exist
+- Keep it concise
+
+You MUST respond with ONLY a valid JSON object, no other text before or after it, in exactly this format:
+{
+  "praise": ["point 1", "point 2"],
+  "warnings": ["concern 1"],
+  "tips": ["tip 1", "tip 2", "tip 3"]
+}
+Each array can have 0-3 items. Every item must be a non-empty string. Do not use empty strings in the arrays.`;
 
   try {
     const res = await fetch(KEVAI_PROXY_URL, {
@@ -1728,32 +1741,73 @@ Only output the JSON, nothing else.`;
       })
     });
     const data = await res.json();
-    const raw  = data.content?.[0]?.text || '';
-    let parsed;
+
+    // Surface API errors clearly
+    if (data.error) {
+      const msg = data.error.message || JSON.stringify(data.error);
+      const type = data.error.type || '';
+      let friendly = '';
+      if (type === 'authentication_error' || msg.includes('API key'))
+        friendly = '🔑 Invalid API key — check your ANTHROPIC_KEY secret in Cloudflare.';
+      else if (type === 'billing_error' || msg.includes('credit') || msg.includes('billing') || msg.includes('balance'))
+        friendly = '💳 No credits — add billing at <a href="https://console.anthropic.com/settings/billing" target="_blank" style="color:var(--accent)">console.anthropic.com/settings/billing</a>. A $5 top-up lasts ~800 analyses.';
+      else if (type === 'overloaded_error')
+        friendly = '⏳ Anthropic is overloaded right now — try again in a moment.';
+      else
+        friendly = `⚠️ API error: ${msg}`;
+      content.innerHTML = `<div style="font-size:13px;line-height:1.8;color:var(--accent2)">${friendly}</div>`;
+      return;
+    }
+
+    const raw = (data.content?.[0]?.text || '').trim();
+
+    // Robust parser — extract JSON even if model wraps it in markdown
+    let parsed = null;
     try {
-      parsed = JSON.parse(raw.replace(/```json|```/g, '').trim());
+      // Try direct parse first
+      parsed = JSON.parse(raw);
     } catch(e) {
-      parsed = { praise: [], warnings: [], tips: [raw] };
+      // Try extracting JSON block from markdown fences
+      const match = raw.match(/\{[\s\S]*\}/);
+      if (match) {
+        try { parsed = JSON.parse(match[0]); } catch(e2) { parsed = null; }
+      }
+    }
+
+    // Filter out any empty strings from arrays
+    if (parsed) {
+      parsed.praise   = (parsed.praise   || []).filter(s => s && s.trim());
+      parsed.warnings = (parsed.warnings || []).filter(s => s && s.trim());
+      parsed.tips     = (parsed.tips     || []).filter(s => s && s.trim());
+    }
+
+    // If parsing totally failed, show raw text as a tip
+    if (!parsed || (!parsed.praise.length && !parsed.warnings.length && !parsed.tips.length)) {
+      if (raw) {
+        parsed = { praise: [], warnings: [], tips: [raw.replace(/[{}[\]"]/g, '').trim().slice(0, 300)] };
+      } else {
+        content.innerHTML = `<div style="color:var(--text2);font-size:13px">Not enough data yet for this month. Add some transactions and try again!</div>`;
+        return;
+      }
     }
 
     let html = '';
-    if (parsed.praise?.length) {
+    if (parsed.praise.length) {
       html += `<div class="kevai-section"><div class="kevai-section-title">✦ What you're doing well</div>`;
       html += parsed.praise.map(p => `<div class="kevai-bullet" style="color:var(--accent3)">🌟 ${p}</div>`).join('');
       html += '</div>';
     }
-    if (parsed.warnings?.length) {
+    if (parsed.warnings.length) {
       html += `<div class="kevai-section"><div class="kevai-section-title">⚠ Watch out</div>`;
       html += parsed.warnings.map(w => `<div class="kevai-bullet" style="color:var(--accent4)">⚠️ ${w}</div>`).join('');
       html += '</div>';
     }
-    if (parsed.tips?.length) {
+    if (parsed.tips.length) {
       html += `<div class="kevai-section"><div class="kevai-section-title">💡 Tips to save more</div>`;
       html += parsed.tips.map(t => `<div class="kevai-bullet">💡 ${t}</div>`).join('');
       html += '</div>';
     }
-    if (!html) html = `<div style="color:var(--text2);font-size:13px">Not enough data yet for this month. Add some transactions and try again!</div>`;
-    content.innerHTML = html;
+    content.innerHTML = html || `<div style="color:var(--text2);font-size:13px">Not enough data yet for this month. Add some transactions and try again!</div>`;
   } catch(e) {
     content.innerHTML = `<div style="color:var(--accent2);font-size:13px">⚠️ Couldn't reach KevAI proxy. Make sure your Worker URL is correct and the Worker is deployed.</div>`;
   } finally {
