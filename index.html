@@ -425,6 +425,25 @@
 
   @keyframes spin { to { transform: rotate(360deg); } }
   .spinner { display: inline-block; width: 16px; height: 16px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.7s linear infinite; vertical-align: middle; margin-right: 6px; }
+
+  /* ── ANALYSIS ── */
+  .cat-bar-row { margin-bottom: 12px; }
+  .cat-bar-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:5px; }
+  .cat-bar-name { font-size:13px; font-weight:600; }
+  .cat-bar-meta { font-size:11px; color:var(--text2); text-align:right; }
+  .cat-bar-track { height:6px; background:var(--surface2); border-radius:10px; overflow:hidden; }
+  .cat-bar-fill  { height:100%; border-radius:10px; transition: width 0.7s cubic-bezier(0.4,0,0.2,1); }
+
+  /* ── KEVAI ── */
+  .kevai-thinking { display:flex; gap:5px; align-items:center; padding: 4px 0; }
+  .kevai-dot { width:7px; height:7px; border-radius:50%; background:var(--accent); animation: kevpulse 1.2s ease-in-out infinite; }
+  .kevai-dot:nth-child(2) { animation-delay:0.2s; }
+  .kevai-dot:nth-child(3) { animation-delay:0.4s; }
+  @keyframes kevpulse { 0%,80%,100%{opacity:0.2;transform:scale(0.8)} 40%{opacity:1;transform:scale(1)} }
+  .kevai-section { margin-bottom:14px; }
+  .kevai-section-title { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.8px; color:var(--accent); margin-bottom:8px; }
+  .kevai-bullet { font-size:13px; line-height:1.75; padding:7px 0; border-bottom:1px solid var(--border); }
+  .kevai-bullet:last-child { border-bottom:none; }
 </style>
 </head>
 <body>
@@ -495,7 +514,11 @@
 
     <!-- Spending chart -->
     <div class="section-header" style="margin-top:6px">
-      <div class="section-title">Last 6 Months</div>
+      <div class="section-title">6-Month Overview</div>
+      <div style="display:flex;gap:10px;align-items:center">
+        <span style="font-size:10px;color:var(--text3);display:flex;align-items:center;gap:3px"><span style="width:8px;height:8px;border-radius:2px;background:var(--accent2);display:inline-block"></span>Exp</span>
+        <span style="font-size:10px;color:var(--text3);display:flex;align-items:center;gap:3px"><span style="width:8px;height:8px;border-radius:2px;background:var(--accent3);display:inline-block"></span>Inc</span>
+      </div>
     </div>
     <div class="card">
       <div class="chart-wrap" id="monthly-chart"></div>
@@ -513,11 +536,84 @@
 
   <!-- ── TRANSACTIONS PAGE ── -->
   <div class="page" id="page-transactions">
+
+    <!-- Month Selector -->
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+      <div onclick="shiftAnalysisMonth(-1)" style="cursor:pointer;padding:6px 12px;background:var(--surface);border:1px solid var(--border);border-radius:8px;font-size:16px">‹</div>
+      <div style="font-weight:800;font-size:15px" id="analysis-month-label">March 2026</div>
+      <div onclick="shiftAnalysisMonth(1)" style="cursor:pointer;padding:6px 12px;background:var(--surface);border:1px solid var(--border);border-radius:8px;font-size:16px">›</div>
+    </div>
+
+    <!-- Month Summary Cards -->
+    <div class="stat-row" style="margin-bottom:14px">
+      <div class="stat-card">
+        <div class="stat-label">Income</div>
+        <div class="stat-value income" id="an-income">₱0</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Expenses</div>
+        <div class="stat-value expense" id="an-expense">₱0</div>
+      </div>
+    </div>
+    <div class="stat-row" style="margin-bottom:16px">
+      <div class="stat-card">
+        <div class="stat-label">Net Saved</div>
+        <div class="stat-value" id="an-net" style="color:var(--text)">₱0</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Savings Rate</div>
+        <div class="stat-value" id="an-rate" style="color:var(--accent)">0%</div>
+      </div>
+    </div>
+
+    <!-- Category Breakdown -->
     <div class="section-header">
-      <div class="section-title">All Transactions</div>
+      <div class="section-title">Expense Breakdown</div>
+      <div id="an-total-exp" style="font-size:12px;color:var(--text2)"></div>
+    </div>
+    <div class="card" style="padding:14px 18px;margin-bottom:14px" id="category-breakdown">
+      <div class="empty-state">No expenses this month</div>
+    </div>
+
+    <!-- Income Breakdown -->
+    <div class="section-header">
+      <div class="section-title">Income Breakdown</div>
+    </div>
+    <div class="card" style="padding:14px 18px;margin-bottom:14px" id="income-breakdown">
+      <div class="empty-state">No income this month</div>
+    </div>
+
+    <!-- Daily Spending Sparkline -->
+    <div class="section-header">
+      <div class="section-title">Daily Spending</div>
+    </div>
+    <div class="card" style="margin-bottom:14px">
+      <div id="daily-chart" style="height:80px;display:flex;align-items:flex-end;gap:3px;padding:8px 4px 20px"></div>
+    </div>
+
+    <!-- KevAI Insights -->
+    <div class="section-header">
+      <div class="section-title" style="color:var(--accent)">✦ KevAI</div>
+      <div onclick="runKevAI()" id="kevai-refresh-btn" style="font-size:11px;color:var(--accent);cursor:pointer;font-weight:700">Analyze ↻</div>
+    </div>
+    <div id="kevai-card" class="card" style="background:linear-gradient(135deg,rgba(124,106,255,0.08),rgba(124,106,255,0.03));border-color:rgba(124,106,255,0.2);margin-bottom:14px">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+        <div style="width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,var(--accent),var(--accent2));display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">✦</div>
+        <div>
+          <div style="font-size:14px;font-weight:800">KevAI</div>
+          <div style="font-size:10px;color:var(--accent);text-transform:uppercase;letter-spacing:0.8px">Smart Insights</div>
+        </div>
+      </div>
+      <div id="kevai-content" style="font-size:13px;color:var(--text2);line-height:1.7">
+        Tap <strong style="color:var(--accent)">Analyze ↻</strong> to get personalized insights on your spending this month.
+      </div>
+    </div>
+
+    <!-- Transaction List -->
+    <div class="section-header">
+      <div class="section-title">Transactions</div>
       <div class="see-all" onclick="openModal('add-txn-modal')">+ Add</div>
     </div>
-    <!-- Filter chips -->
     <div class="chip-row" style="margin-bottom:14px" id="filter-chips">
       <div class="chip selected" data-f="all" onclick="filterTxn('all',this)">All</div>
       <div class="chip" data-f="expense" onclick="filterTxn('expense',this)">Expenses</div>
@@ -945,6 +1041,7 @@ function render() {
   renderTransactions();
   renderGoals();
   renderChart();
+  renderAnalysis();
   updateStats();
   updateSheetsUI();
   document.getElementById('currency-select').value = state.currency;
@@ -1035,24 +1132,13 @@ function renderSources() {
 }
 
 function renderTransactions(filter) {
-  filter = filter || state.txnFilter;
-  let txns = [...state.transactions].sort((a, b) => new Date(b.date) - new Date(a.date));
-  if (filter === 'expense')  txns = txns.filter(t => t.type === 'expense');
-  if (filter === 'income')   txns = txns.filter(t => t.type === 'income');
-  if (filter === 'transfer') txns = txns.filter(t => t.type === 'transfer');
-  // In "all" mode, hide transfer-in duplicates to avoid confusion (show out + fee only)
-  if (filter === 'all') txns = txns.filter(t => t.subtype !== 'in');
-
+  // Dashboard recent list only — transactions page uses renderTransactionsForMonth()
   const recent = [...state.transactions]
     .sort((a, b) => new Date(b.date) - new Date(a.date))
     .filter(t => t.subtype !== 'in')
     .slice(0, 5);
-
   const recentEl = document.getElementById('recent-txns');
-  recentEl.innerHTML = recent.length ? recent.map(txnHTML).join('') : '<div class="empty-state">No transactions yet.<br>Tap + to add one!</div>';
-
-  const allEl = document.getElementById('all-txns-list');
-  allEl.innerHTML = txns.length ? txns.map(txnHTML).join('') : '<div class="empty-state">No transactions found.</div>';
+  if (recentEl) recentEl.innerHTML = recent.length ? recent.map(txnHTML).join('') : '<div class="empty-state">No transactions yet.<br>Tap + to add one!</div>';
 }
 
 function txnHTML(t) {
@@ -1145,18 +1231,226 @@ function renderChart() {
       const d = new Date(t.date);
       return t.type === 'expense' && d.getMonth() === m.month && d.getFullYear() === m.year;
     }).reduce((s, t) => s + t.amount, 0);
-    return { ...m, exp };
+    const inc = state.transactions.filter(t => {
+      const d = new Date(t.date);
+      return t.type === 'income' && d.getMonth() === m.month && d.getFullYear() === m.year;
+    }).reduce((s, t) => s + t.amount, 0);
+    return { ...m, exp, inc };
   });
-  const maxVal = Math.max(...data.map(d => d.exp), 1);
+  const maxVal = Math.max(...data.map(d => Math.max(d.exp, d.inc)), 1);
   el.innerHTML = data.map(d => {
-    const h = Math.round((d.exp / maxVal) * 100);
+    const expH = Math.max(Math.round((d.exp / maxVal) * 100), d.exp > 0 ? 4 : 0);
+    const incH = Math.max(Math.round((d.inc / maxVal) * 100), d.inc > 0 ? 4 : 0);
+    const isCurrentMonth = d.month === now.getMonth() && d.year === now.getFullYear();
     return `
-      <div class="bar-wrap">
-        <div class="bar" style="height:${h}%;background:linear-gradient(to top, var(--accent), var(--accent2))">
-          <span class="bar-label">${d.label}</span>
+      <div class="bar-wrap" style="position:relative">
+        <div style="display:flex;gap:2px;align-items:flex-end;flex:1;width:100%">
+          <div style="flex:1;height:${expH}%;background:var(--accent2);border-radius:4px 4px 0 0;opacity:${isCurrentMonth?1:0.6};min-height:${d.exp>0?4:0}px" title="${fmtMoney(d.exp)}"></div>
+          <div style="flex:1;height:${incH}%;background:var(--accent3);border-radius:4px 4px 0 0;opacity:${isCurrentMonth?1:0.6};min-height:${d.inc>0?4:0}px" title="${fmtMoney(d.inc)}"></div>
+        </div>
+        <span class="bar-label" style="position:absolute;bottom:-18px;left:50%;transform:translateX(-50%);font-size:9px;color:${isCurrentMonth?'var(--text)':'var(--text3)'};font-weight:${isCurrentMonth?700:400}">${d.label}</span>
+      </div>`;
+  }).join('');
+}
+
+// ── ANALYSIS STATE ──
+let analysisDate = new Date();
+
+function shiftAnalysisMonth(dir) {
+  analysisDate = new Date(analysisDate.getFullYear(), analysisDate.getMonth() + dir, 1);
+  renderAnalysis();
+}
+
+function renderAnalysis() {
+  const m = analysisDate.getMonth();
+  const y = analysisDate.getFullYear();
+  const label = analysisDate.toLocaleDateString('en-PH', { month: 'long', year: 'numeric' });
+  document.getElementById('analysis-month-label').textContent = label;
+
+  const txns = state.transactions.filter(t => {
+    const d = new Date(t.date);
+    return d.getMonth() === m && d.getFullYear() === y;
+  });
+
+  const expenses = txns.filter(t => t.type === 'expense');
+  const income   = txns.filter(t => t.type === 'income');
+  const totalExp = expenses.reduce((s, t) => s + t.amount, 0);
+  const totalInc = income.reduce((s, t) => s + t.amount, 0);
+  const net      = totalInc - totalExp;
+  const rate     = totalInc > 0 ? Math.round((net / totalInc) * 100) : 0;
+
+  document.getElementById('an-income').textContent  = fmtMoney(totalInc);
+  document.getElementById('an-expense').textContent = fmtMoney(totalExp);
+  document.getElementById('an-net').textContent     = fmtMoney(net);
+  document.getElementById('an-net').style.color     = net >= 0 ? 'var(--accent3)' : 'var(--accent2)';
+  document.getElementById('an-rate').textContent    = rate + '%';
+  document.getElementById('an-rate').style.color    = rate >= 20 ? 'var(--accent3)' : rate >= 0 ? 'var(--accent4)' : 'var(--accent2)';
+  document.getElementById('an-total-exp').textContent = totalExp > 0 ? fmtMoney(totalExp) : '';
+
+  renderCategoryBreakdown(expenses, totalExp, 'category-breakdown', 'expense');
+  renderCategoryBreakdown(income,   totalInc, 'income-breakdown',   'income');
+  renderDailyChart(txns, m, y);
+  renderTransactionsForMonth();
+}
+
+function renderCategoryBreakdown(txns, total, elId, type) {
+  const el = document.getElementById(elId);
+  if (!txns.length) { el.innerHTML = '<div class="empty-state" style="padding:14px 0">Nothing this month</div>'; return; }
+
+  const catMap = {};
+  txns.forEach(t => {
+    const key = t.category || (type === 'expense' ? '🌐 Others' : '💰 Others');
+    catMap[key] = (catMap[key] || 0) + t.amount;
+  });
+  const sorted = Object.entries(catMap).sort((a, b) => b[1] - a[1]);
+  const colors = type === 'expense'
+    ? ['#ff6a8a','#e96aff','#ff9f6a','#ffb86a','#7c6aff','#6ab8ff','#ff6a8a','#6afff3']
+    : ['#6affb8','#6ab8ff','#7c6aff','#ffb86a','#6afff3','#e96aff'];
+
+  el.innerHTML = sorted.map(([cat, amt], i) => {
+    const pct  = total > 0 ? Math.round((amt / total) * 100) : 0;
+    const emoji = cat.split(' ')[0];
+    const name  = cat.split(' ').slice(1).join(' ') || cat;
+    const color = colors[i % colors.length];
+    return `
+      <div class="cat-bar-row">
+        <div class="cat-bar-header">
+          <div class="cat-bar-name">${emoji} ${name}</div>
+          <div class="cat-bar-meta">${fmtMoney(amt)} <span style="color:var(--text3)">(${pct}%)</span></div>
+        </div>
+        <div class="cat-bar-track">
+          <div class="cat-bar-fill" style="width:${pct}%;background:${color}"></div>
         </div>
       </div>`;
   }).join('');
+}
+
+function renderDailyChart(txns, month, year) {
+  const el = document.getElementById('daily-chart');
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const daily = Array(daysInMonth).fill(0);
+  txns.filter(t => t.type === 'expense').forEach(t => {
+    const day = new Date(t.date).getDate() - 1;
+    if (day >= 0 && day < daysInMonth) daily[day] += t.amount;
+  });
+  const maxDay = Math.max(...daily, 1);
+  const today = new Date();
+  el.innerHTML = daily.map((amt, i) => {
+    const h = Math.max(Math.round((amt / maxDay) * 100), amt > 0 ? 6 : 2);
+    const isToday = today.getDate() === i + 1 && today.getMonth() === month && today.getFullYear() === year;
+    const color = isToday ? 'var(--accent)' : amt > 0 ? 'var(--accent2)' : 'var(--surface2)';
+    return `<div style="flex:1;height:${h}%;background:${color};border-radius:3px 3px 0 0;min-height:2px;position:relative" title="Day ${i+1}: ${fmtMoney(amt)}">
+      ${isToday ? `<div style="position:absolute;top:-14px;left:50%;transform:translateX(-50%);font-size:8px;color:var(--accent);font-weight:700">•</div>` : ''}
+    </div>`;
+  }).join('');
+}
+
+// ── KEVAI ──
+async function runKevAI() {
+  const btn = document.getElementById('kevai-refresh-btn');
+  const content = document.getElementById('kevai-content');
+  btn.style.opacity = '0.4';
+  btn.style.pointerEvents = 'none';
+  content.innerHTML = `<div class="kevai-thinking"><div class="kevai-dot"></div><div class="kevai-dot"></div><div class="kevai-dot"></div></div>`;
+
+  const m = analysisDate.getMonth();
+  const y = analysisDate.getFullYear();
+  const monthLabel = analysisDate.toLocaleDateString('en-PH', { month: 'long', year: 'numeric' });
+
+  const txns     = state.transactions.filter(t => { const d = new Date(t.date); return d.getMonth()===m && d.getFullYear()===y; });
+  const expenses = txns.filter(t => t.type === 'expense');
+  const income   = txns.filter(t => t.type === 'income');
+  const totalExp = expenses.reduce((s,t)=>s+t.amount,0);
+  const totalInc = income.reduce((s,t)=>s+t.amount,0);
+  const net      = totalInc - totalExp;
+  const savingsRate = totalInc > 0 ? Math.round((net/totalInc)*100) : 0;
+  const fees     = txns.filter(t=>t.type==='transfer'&&t.subtype==='fee').reduce((s,t)=>s+t.amount,0);
+
+  const catMap = {};
+  expenses.forEach(t => { const k = t.category||'Others'; catMap[k]=(catMap[k]||0)+t.amount; });
+  const topCats = Object.entries(catMap).sort((a,b)=>b[1]-a[1]).slice(0,5).map(([k,v])=>`${k}: ${fmtMoney(v)}`).join(', ');
+
+  const sources = state.sources.map(s => {
+    const sid = String(s.id);
+    const out = state.transactions.filter(t=>t.type==='transfer'&&t.subtype==='out'&&String(t.source)===sid).reduce((a,t)=>a+t.amount,0);
+    const inn = state.transactions.filter(t=>t.type==='transfer'&&t.subtype==='in'&&String(t.source)===sid).reduce((a,t)=>a+t.amount,0);
+    const fee = state.transactions.filter(t=>t.type==='transfer'&&t.subtype==='fee'&&String(t.source)===sid).reduce((a,t)=>a+t.amount,0);
+    const bal = s.balance + income.filter(t=>String(t.source)===sid).reduce((a,t)=>a+t.amount,0) - expenses.filter(t=>String(t.source)===sid).reduce((a,t)=>a+t.amount,0) - out + inn - fee;
+    return `${s.name} (${fmtMoney(bal)})`;
+  }).join(', ');
+
+  const goals = state.goals.map(g => `${g.name}: ${Math.round((g.current/g.target)*100)}% saved`).join(', ');
+
+  const prompt = `You are KevAI, a friendly and sharp personal finance assistant embedded in a budgeting app called Vault. Analyze the user's financial data for ${monthLabel} and give personalized insights.
+
+Financial Summary:
+- Total Income: ${fmtMoney(totalInc)}
+- Total Expenses: ${fmtMoney(totalExp)}
+- Net Saved: ${fmtMoney(net)}
+- Savings Rate: ${savingsRate}%
+- Transfer Fees Paid: ${fmtMoney(fees)}
+- Top Expense Categories: ${topCats || 'None'}
+- Account Balances: ${sources || 'None'}
+- Savings Goals Progress: ${goals || 'None set'}
+
+Instructions:
+- Be conversational, warm, and specific — use actual numbers from the data
+- If savings rate > 20%, genuinely praise the user and reinforce good habits
+- If savings rate is 0-20%, give encouraging but honest feedback
+- If net is negative, be gentle but clear about the concern
+- Highlight the biggest expense category and whether it seems reasonable
+- If transfer fees are notable, mention them
+- Give 2-3 concrete, actionable saving tips specific to their spending pattern
+- Comment on goal progress if any goals exist
+- Keep total response concise (5-8 bullet points max)
+- Do NOT use markdown headers or asterisks. Use plain text only.
+- Format your response as a JSON object with this exact structure:
+{"praise":["...","..."],"warnings":["..."],"tips":["...","...","..."]}
+Only output the JSON, nothing else.`;
+
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 1000,
+        messages: [{ role: 'user', content: prompt }]
+      })
+    });
+    const data = await res.json();
+    const raw  = data.content?.[0]?.text || '';
+    let parsed;
+    try {
+      parsed = JSON.parse(raw.replace(/```json|```/g, '').trim());
+    } catch(e) {
+      parsed = { praise: [], warnings: [], tips: [raw] };
+    }
+
+    let html = '';
+    if (parsed.praise?.length) {
+      html += `<div class="kevai-section"><div class="kevai-section-title">✦ What you're doing well</div>`;
+      html += parsed.praise.map(p => `<div class="kevai-bullet" style="color:var(--accent3)">🌟 ${p}</div>`).join('');
+      html += '</div>';
+    }
+    if (parsed.warnings?.length) {
+      html += `<div class="kevai-section"><div class="kevai-section-title">⚠ Watch out</div>`;
+      html += parsed.warnings.map(w => `<div class="kevai-bullet" style="color:var(--accent4)">⚠️ ${w}</div>`).join('');
+      html += '</div>';
+    }
+    if (parsed.tips?.length) {
+      html += `<div class="kevai-section"><div class="kevai-section-title">💡 Tips to save more</div>`;
+      html += parsed.tips.map(t => `<div class="kevai-bullet">💡 ${t}</div>`).join('');
+      html += '</div>';
+    }
+    if (!html) html = `<div style="color:var(--text2);font-size:13px">Not enough data yet for this month. Add some transactions and try again!</div>`;
+    content.innerHTML = html;
+  } catch(e) {
+    content.innerHTML = `<div style="color:var(--accent2);font-size:13px">KevAI couldn't connect. Check your internet and try again.</div>`;
+  } finally {
+    btn.style.opacity = '1';
+    btn.style.pointerEvents = 'auto';
+  }
 }
 
 // ── ACTIONS ──
@@ -1448,8 +1742,25 @@ function saveEditTxn(amount, desc, source, date) {
 function filterTxn(f, el) {
   state.txnFilter = f;
   document.querySelectorAll('#filter-chips .chip').forEach(c => c.classList.remove('selected'));
-  el.classList.add('selected');
-  renderTransactions(f);
+  if (el) el.classList.add('selected');
+  renderTransactionsForMonth();
+}
+
+function renderTransactionsForMonth() {
+  const f = state.txnFilter;
+  const m = analysisDate.getMonth();
+  const y = analysisDate.getFullYear();
+  let txns = [...state.transactions]
+    .filter(t => { const d = new Date(t.date); return d.getMonth()===m && d.getFullYear()===y; })
+    .sort((a, b) => new Date(b.date) - new Date(a.date));
+
+  if (f === 'expense')  txns = txns.filter(t => t.type === 'expense');
+  if (f === 'income')   txns = txns.filter(t => t.type === 'income');
+  if (f === 'transfer') txns = txns.filter(t => t.type === 'transfer');
+  if (f === 'all')      txns = txns.filter(t => t.subtype !== 'in');
+
+  const allEl = document.getElementById('all-txns-list');
+  allEl.innerHTML = txns.length ? txns.map(txnHTML).join('') : '<div class="empty-state">No transactions found.</div>';
 }
 
 // ── GOOGLE OAUTH + SHEETS API ──
