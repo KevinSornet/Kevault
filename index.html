@@ -1608,9 +1608,56 @@ function closeDayDetail() {
 }
 
 // ── KEVAI ──
+// KevAI requires a tiny proxy server to make API calls from the browser.
+// See the setup instructions shown in the UI below.
+const KEVAI_PROXY_URL = 'https://kevai-proxy.kevinsornet.workers.dev/'; // e.g. 'https://your-worker.workers.dev'
+
 async function runKevAI() {
   const btn = document.getElementById('kevai-refresh-btn');
   const content = document.getElementById('kevai-content');
+
+  if (!KEVAI_PROXY_URL) {
+    content.innerHTML = `
+      <div style="font-size:13px;line-height:1.8;color:var(--text2)">
+        <div style="font-size:14px;font-weight:800;color:var(--text);margin-bottom:10px">⚙️ One-time setup needed</div>
+        KevAI needs a free proxy to make AI calls securely from your browser. Here's how to set it up in ~3 minutes:
+        <div style="margin-top:12px;background:var(--surface2);border-radius:10px;padding:12px;border:1px solid var(--border);font-size:12px;line-height:2">
+          <strong style="color:var(--accent)">1.</strong> Go to <a href="https://workers.cloudflare.com" target="_blank" style="color:var(--accent)">workers.cloudflare.com</a> and sign up free<br>
+          <strong style="color:var(--accent)">2.</strong> Create a new Worker and paste the proxy code below<br>
+          <strong style="color:var(--accent)">3.</strong> Add your Anthropic API key as a secret named <code style="background:var(--surface);padding:1px 5px;border-radius:4px">ANTHROPIC_KEY</code><br>
+          <strong style="color:var(--accent)">4.</strong> Copy your Worker URL and paste it into <code style="background:var(--surface);padding:1px 5px;border-radius:4px">KEVAI_PROXY_URL</code> in the app code
+        </div>
+        <div style="margin-top:10px;background:var(--surface2);border-radius:10px;padding:12px;border:1px solid var(--border)">
+          <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:0.8px;margin-bottom:8px">Cloudflare Worker Code — copy & paste this:</div>
+          <pre style="font-size:10px;color:var(--accent3);overflow-x:auto;white-space:pre-wrap;line-height:1.6">export default {
+  async fetch(req) {
+    if (req.method === 'OPTIONS') return new Response(null, { headers: cors() });
+    const body = await req.json();
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': env.ANTHROPIC_KEY,
+        'anthropic-version': '2023-06-01'
+      },
+      body: JSON.stringify(body)
+    });
+    const data = await res.json();
+    return Response.json(data, { headers: cors() });
+  }
+};
+function cors() {
+  return {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type'
+  };
+}</pre>
+        </div>
+      </div>`;
+    return;
+  }
+
   btn.style.opacity = '0.4';
   btn.style.pointerEvents = 'none';
   content.innerHTML = `<div class="kevai-thinking"><div class="kevai-dot"></div><div class="kevai-dot"></div><div class="kevai-dot"></div></div>`;
@@ -1671,7 +1718,7 @@ Instructions:
 Only output the JSON, nothing else.`;
 
   try {
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
+    const res = await fetch(KEVAI_PROXY_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -1708,7 +1755,7 @@ Only output the JSON, nothing else.`;
     if (!html) html = `<div style="color:var(--text2);font-size:13px">Not enough data yet for this month. Add some transactions and try again!</div>`;
     content.innerHTML = html;
   } catch(e) {
-    content.innerHTML = `<div style="color:var(--accent2);font-size:13px">KevAI couldn't connect. Check your internet and try again.</div>`;
+    content.innerHTML = `<div style="color:var(--accent2);font-size:13px">⚠️ Couldn't reach KevAI proxy. Make sure your Worker URL is correct and the Worker is deployed.</div>`;
   } finally {
     btn.style.opacity = '1';
     btn.style.pointerEvents = 'auto';
