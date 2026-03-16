@@ -444,6 +444,19 @@
   .kevai-section-title { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.8px; color:var(--accent); margin-bottom:8px; }
   .kevai-bullet { font-size:13px; line-height:1.75; padding:7px 0; border-bottom:1px solid var(--border); }
   .kevai-bullet:last-child { border-bottom:none; }
+
+  /* ── HEATMAP ── */
+  .heatmap-cell {
+    aspect-ratio: 1;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: transform 0.15s, box-shadow 0.15s;
+    position: relative;
+  }
+  .heatmap-cell:hover { transform: scale(1.15); z-index: 2; }
+  .heatmap-cell.active { box-shadow: 0 0 0 2px var(--accent); transform: scale(1.15); z-index: 2; }
+  .heatmap-cell.empty { background: var(--surface2); cursor: default; }
+  .heatmap-cell.empty:hover { transform: none; }
 </style>
 </head>
 <body>
@@ -591,17 +604,109 @@
       <div id="daily-chart" style="height:80px;display:flex;align-items:flex-end;gap:3px;padding:8px 4px 20px"></div>
     </div>
 
-    <!-- KevAI Insights -->
+    <!-- Heatmap Calendar -->
     <div class="section-header">
-      <div class="section-title" style="color:var(--accent)">✦ KevAI</div>
+      <div class="section-title">Activity Heatmap</div>
+      <div style="display:flex;gap:4px;align-items:center;font-size:10px;color:var(--text3)">
+        <span>Low</span>
+        <div style="display:flex;gap:2px">
+          <div style="width:10px;height:10px;border-radius:2px;background:rgba(124,106,255,0.15)"></div>
+          <div style="width:10px;height:10px;border-radius:2px;background:rgba(124,106,255,0.35)"></div>
+          <div style="width:10px;height:10px;border-radius:2px;background:rgba(124,106,255,0.6)"></div>
+          <div style="width:10px;height:10px;border-radius:2px;background:rgba(124,106,255,0.85)"></div>
+          <div style="width:10px;height:10px;border-radius:2px;background:var(--accent)"></div>
+        </div>
+        <span>High</span>
+      </div>
+    </div>
+    <div class="card" style="padding:14px;margin-bottom:14px">
+      <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:2px;margin-bottom:6px" id="heatmap-dow">
+        <div style="text-align:center;font-size:9px;color:var(--text3)">S</div>
+        <div style="text-align:center;font-size:9px;color:var(--text3)">M</div>
+        <div style="text-align:center;font-size:9px;color:var(--text3)">T</div>
+        <div style="text-align:center;font-size:9px;color:var(--text3)">W</div>
+        <div style="text-align:center;font-size:9px;color:var(--text3)">T</div>
+        <div style="text-align:center;font-size:9px;color:var(--text3)">F</div>
+        <div style="text-align:center;font-size:9px;color:var(--text3)">S</div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:3px" id="heatmap-grid"></div>
+    </div>
+
+    <!-- Day Detail Panel -->
+    <div id="day-detail-panel" style="display:none;margin-bottom:14px">
+      <div class="card" style="padding:14px 18px;border-color:rgba(124,106,255,0.3)">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+          <div style="font-size:14px;font-weight:800" id="day-detail-title">—</div>
+          <div onclick="closeDayDetail()" style="cursor:pointer;color:var(--text3);font-size:16px;padding:2px 6px">✕</div>
+        </div>
+        <div id="day-detail-stats" style="display:flex;gap:10px;margin-bottom:12px"></div>
+        <div id="day-detail-txns"></div>
+      </div>
+    </div>
+
+    <!-- Kevinsights -->
+    <div class="section-header">
+      <div class="section-title" style="color:var(--accent);display:flex;align-items:center;gap:7px">
+        <svg width="22" height="22" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" style="flex-shrink:0">
+          <!-- Face -->
+          <circle cx="32" cy="32" r="30" fill="url(#kevFace)"/>
+          <!-- Glasses frame left -->
+          <rect x="8" y="22" width="18" height="13" rx="6" fill="none" stroke="white" stroke-width="2.5"/>
+          <!-- Glasses frame right -->
+          <rect x="38" y="22" width="18" height="13" rx="6" fill="none" stroke="white" stroke-width="2.5"/>
+          <!-- Glasses bridge -->
+          <line x1="26" y1="28" x2="38" y2="28" stroke="white" stroke-width="2.5"/>
+          <!-- Glasses left arm -->
+          <line x1="8" y1="27" x2="3" y2="24" stroke="white" stroke-width="2"/>
+          <!-- Glasses right arm -->
+          <line x1="56" y1="27" x2="61" y2="24" stroke="white" stroke-width="2"/>
+          <!-- Eyes -->
+          <circle cx="17" cy="28" r="3.5" fill="white"/>
+          <circle cx="47" cy="28" r="3.5" fill="white"/>
+          <circle cx="18" cy="28" r="1.8" fill="#1a1830"/>
+          <circle cx="48" cy="28" r="1.8" fill="#1a1830"/>
+          <!-- Big smile -->
+          <path d="M18 42 Q32 56 46 42" stroke="white" stroke-width="3" stroke-linecap="round" fill="none"/>
+          <!-- Cheeks -->
+          <circle cx="14" cy="40" r="5" fill="rgba(255,106,138,0.35)"/>
+          <circle cx="50" cy="40" r="5" fill="rgba(255,106,138,0.35)"/>
+          <defs>
+            <radialGradient id="kevFace" cx="40%" cy="35%" r="65%">
+              <stop offset="0%" stop-color="#9c8aff"/>
+              <stop offset="100%" stop-color="#6c5aef"/>
+            </radialGradient>
+          </defs>
+        </svg>
+        Kevinsights
+      </div>
       <div onclick="runKevAI()" id="kevai-refresh-btn" style="font-size:11px;color:var(--accent);cursor:pointer;font-weight:700">Analyze ↻</div>
     </div>
     <div id="kevai-card" class="card" style="background:linear-gradient(135deg,rgba(124,106,255,0.08),rgba(124,106,255,0.03));border-color:rgba(124,106,255,0.2);margin-bottom:14px">
-      <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
-        <div style="width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,var(--accent),var(--accent2));display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">✦</div>
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px">
+        <svg width="44" height="44" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" style="flex-shrink:0">
+          <circle cx="32" cy="32" r="30" fill="url(#kevFace2)"/>
+          <rect x="8" y="22" width="18" height="13" rx="6" fill="none" stroke="white" stroke-width="2.5"/>
+          <rect x="38" y="22" width="18" height="13" rx="6" fill="none" stroke="white" stroke-width="2.5"/>
+          <line x1="26" y1="28" x2="38" y2="28" stroke="white" stroke-width="2.5"/>
+          <line x1="8" y1="27" x2="3" y2="24" stroke="white" stroke-width="2"/>
+          <line x1="56" y1="27" x2="61" y2="24" stroke="white" stroke-width="2"/>
+          <circle cx="17" cy="28" r="3.5" fill="white"/>
+          <circle cx="47" cy="28" r="3.5" fill="white"/>
+          <circle cx="18" cy="28" r="1.8" fill="#1a1830"/>
+          <circle cx="48" cy="28" r="1.8" fill="#1a1830"/>
+          <path d="M18 42 Q32 56 46 42" stroke="white" stroke-width="3" stroke-linecap="round" fill="none"/>
+          <circle cx="14" cy="40" r="5" fill="rgba(255,106,138,0.35)"/>
+          <circle cx="50" cy="40" r="5" fill="rgba(255,106,138,0.35)"/>
+          <defs>
+            <radialGradient id="kevFace2" cx="40%" cy="35%" r="65%">
+              <stop offset="0%" stop-color="#9c8aff"/>
+              <stop offset="100%" stop-color="#6c5aef"/>
+            </radialGradient>
+          </defs>
+        </svg>
         <div>
-          <div style="font-size:14px;font-weight:800">KevAI</div>
-          <div style="font-size:10px;color:var(--accent);text-transform:uppercase;letter-spacing:0.8px">Smart Insights</div>
+          <div style="font-size:15px;font-weight:800">KevAI</div>
+          <div style="font-size:10px;color:var(--accent);text-transform:uppercase;letter-spacing:0.8px">Kevinsights</div>
         </div>
       </div>
       <div id="kevai-content" style="font-size:13px;color:var(--text2);line-height:1.7">
@@ -962,6 +1067,46 @@
   </div>
 </div>
 
+<!-- ── MODAL: Source Detail ── -->
+<div class="modal-overlay" id="source-detail-modal">
+  <div class="modal" style="max-height:92vh;overflow-y:auto">
+    <div class="modal-handle"></div>
+
+    <!-- Source Header -->
+    <div style="display:flex;align-items:center;gap:14px;margin-bottom:18px">
+      <div id="src-detail-icon" style="width:48px;height:48px;border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0"></div>
+      <div style="flex:1">
+        <div style="font-size:18px;font-weight:800" id="src-detail-name">Account</div>
+        <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:0.8px" id="src-detail-type"></div>
+      </div>
+      <div style="text-align:right">
+        <div style="font-size:11px;color:var(--text3);margin-bottom:2px">Balance</div>
+        <div style="font-family:'DM Mono',monospace;font-size:18px;font-weight:700" id="src-detail-balance"></div>
+      </div>
+    </div>
+
+    <!-- Stats Row -->
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:18px" id="src-detail-stats"></div>
+
+    <!-- Mini Sparkline -->
+    <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:0.8px;margin-bottom:8px">Last 6 Months Activity</div>
+    <div style="height:60px;display:flex;align-items:flex-end;gap:4px;margin-bottom:18px;padding-bottom:16px;position:relative" id="src-mini-chart"></div>
+
+    <!-- Transaction History -->
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+      <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:0.8px">Transaction History</div>
+      <div style="display:flex;gap:6px" id="src-filter-chips">
+        <div class="chip selected" style="font-size:10px;padding:4px 10px" onclick="srcFilter('all',this)">All</div>
+        <div class="chip" style="font-size:10px;padding:4px 10px" onclick="srcFilter('expense',this)">Out</div>
+        <div class="chip" style="font-size:10px;padding:4px 10px" onclick="srcFilter('income',this)">In</div>
+      </div>
+    </div>
+    <div id="src-detail-txns" style="max-height:300px;overflow-y:auto;border:1px solid var(--border);border-radius:12px;padding:0 12px"></div>
+
+    <button class="btn btn-secondary" style="margin-top:16px" onclick="closeModal('source-detail-modal')">Close</button>
+  </div>
+</div>
+
 <script>
 // ── GOOGLE CLIENT ID ── Replace with your actual Client ID ──
 const GOOGLE_CLIENT_ID = '516815100230-ll2teblmpk6c792monn88secpuk0np2d.apps.googleusercontent.com';
@@ -1119,14 +1264,18 @@ function renderSources() {
     const transferIn  = state.transactions.filter(t => t.type === 'transfer' && t.subtype === 'in'  && String(t.source) === sid).reduce((a, t) => a + t.amount, 0);
     const transferFee = state.transactions.filter(t => t.type === 'transfer' && t.subtype === 'fee' && String(t.source) === sid).reduce((a, t) => a + t.amount, 0);
     const bal = src.balance + srcIncome - srcExpense - transferOut + transferIn - transferFee;
+    const txnCount = state.transactions.filter(t => String(t.source) === sid && t.subtype !== 'in').length;
     return `
-      <div class="source-item">
-        <div class="source-color-dot" style="background:${src.color}"></div>
+      <div class="source-item" onclick="openSourceDetail('${sid}')" style="cursor:pointer">
+        <div style="width:36px;height:36px;border-radius:10px;background:${src.color}22;border:1.5px solid ${src.color};display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">${SOURCE_ICONS[src.type] || '💳'}</div>
         <div style="flex:1">
-          <div style="font-size:14px;font-weight:700">${SOURCE_ICONS[src.type] || '💳'} ${src.name}</div>
-          <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:0.5px">${src.type}</div>
+          <div style="font-size:14px;font-weight:700">${src.name}</div>
+          <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:0.5px">${src.type} · ${txnCount} txn${txnCount !== 1 ? 's' : ''}</div>
         </div>
-        <div style="font-family:'DM Mono',monospace;font-size:14px;font-weight:500">${fmtMoney(bal)}</div>
+        <div style="text-align:right">
+          <div style="font-family:'DM Mono',monospace;font-size:14px;font-weight:600;color:${bal < 0 ? 'var(--accent2)' : 'var(--text)'}">${fmtMoney(bal)}</div>
+          <div style="font-size:10px;color:var(--text3);margin-top:2px">View →</div>
+        </div>
       </div>`;
   }).join('');
 }
@@ -1290,6 +1439,8 @@ function renderAnalysis() {
   renderCategoryBreakdown(expenses, totalExp, 'category-breakdown', 'expense');
   renderCategoryBreakdown(income,   totalInc, 'income-breakdown',   'income');
   renderDailyChart(txns, m, y);
+  renderHeatmap();
+  closeDayDetail();
   renderTransactionsForMonth();
 }
 
@@ -1343,6 +1494,117 @@ function renderDailyChart(txns, month, year) {
       ${isToday ? `<div style="position:absolute;top:-14px;left:50%;transform:translateX(-50%);font-size:8px;color:var(--accent);font-weight:700">•</div>` : ''}
     </div>`;
   }).join('');
+}
+
+// ── HEATMAP CALENDAR ──
+let selectedHeatmapDay = null;
+
+function renderHeatmap() {
+  const m = analysisDate.getMonth();
+  const y = analysisDate.getFullYear();
+  const daysInMonth = new Date(y, m + 1, 0).getDate();
+  const firstDow = new Date(y, m, 1).getDay(); // 0=Sun
+
+  // Build per-day totals: { volume, txnCount, expense, income }
+  const dayData = {};
+  state.transactions
+    .filter(t => { const d = new Date(t.date); return d.getMonth() === m && d.getFullYear() === y; })
+    .forEach(t => {
+      const day = new Date(t.date).getDate();
+      if (!dayData[day]) dayData[day] = { volume: 0, count: 0, expense: 0, income: 0, transfer: 0 };
+      if (t.subtype === 'in') return; // skip transfer-in duplicate
+      dayData[day].count++;
+      dayData[day].volume += t.amount;
+      if (t.type === 'expense') dayData[day].expense += t.amount;
+      else if (t.type === 'income') dayData[day].income += t.amount;
+      else if (t.type === 'transfer') dayData[day].transfer += t.amount;
+    });
+
+  const maxVol = Math.max(...Object.values(dayData).map(d => d.volume), 1);
+  const today = new Date();
+
+  const grid = document.getElementById('heatmap-grid');
+  // Empty cells for offset
+  let cells = '';
+  for (let i = 0; i < firstDow; i++) {
+    cells += `<div class="heatmap-cell empty"></div>`;
+  }
+  for (let day = 1; day <= daysInMonth; day++) {
+    const d = dayData[day];
+    const isToday = today.getDate() === day && today.getMonth() === m && today.getFullYear() === y;
+    const isSelected = selectedHeatmapDay === day;
+    const vol = d ? d.volume : 0;
+    const count = d ? d.count : 0;
+
+    let bg, opacity;
+    if (!d || count === 0) {
+      bg = 'rgba(124,106,255,0.06)';
+      opacity = 1;
+    } else {
+      // Determine dominant type for color
+      const dominant = d.income > d.expense ? 'income' : 'expense';
+      if (dominant === 'income') {
+        opacity = 0.2 + (vol / maxVol) * 0.8;
+        bg = `rgba(106,255,184,${opacity.toFixed(2)})`;
+      } else {
+        opacity = 0.2 + (vol / maxVol) * 0.8;
+        bg = `rgba(124,106,255,${opacity.toFixed(2)})`;
+      }
+    }
+
+    const todayRing = isToday ? 'box-shadow:0 0 0 1.5px var(--accent4);' : '';
+    const selRing   = isSelected ? 'box-shadow:0 0 0 2px var(--accent);transform:scale(1.15);z-index:2;' : '';
+
+    cells += `<div class="heatmap-cell${!d || count===0 ? ' empty' : ''}"
+      style="background:${bg};${todayRing}${selRing}position:relative"
+      title="Day ${day}${count ? ': '+count+' txn'+(count>1?'s':'')+' · '+fmtMoney(vol) : ': no activity'}"
+      onclick="${count > 0 ? `openDayDetail(${day})` : ''}">
+      <div style="position:absolute;bottom:1px;left:0;right:0;text-align:center;font-size:7px;color:${isToday?'var(--accent4)':'rgba(255,255,255,0.5)'};font-weight:${isToday?700:400}">${day}</div>
+    </div>`;
+  }
+  grid.innerHTML = cells;
+}
+
+function openDayDetail(day) {
+  selectedHeatmapDay = day;
+  renderHeatmap(); // re-render to show selection ring
+
+  const m = analysisDate.getMonth();
+  const y = analysisDate.getFullYear();
+  const dateObj = new Date(y, m, day);
+  const dateStr = dateObj.toLocaleDateString('en-PH', { weekday:'long', month:'long', day:'numeric', year:'numeric' });
+
+  const txns = state.transactions
+    .filter(t => { const d = new Date(t.date); return d.getDate()===day && d.getMonth()===m && d.getFullYear()===y && t.subtype!=='in'; })
+    .sort((a,b) => a.type.localeCompare(b.type));
+
+  const totalExp = txns.filter(t=>t.type==='expense').reduce((s,t)=>s+t.amount,0);
+  const totalInc = txns.filter(t=>t.type==='income').reduce((s,t)=>s+t.amount,0);
+  const totalTrf = txns.filter(t=>t.type==='transfer').reduce((s,t)=>s+t.amount,0);
+  const net = totalInc - totalExp;
+
+  document.getElementById('day-detail-title').textContent = dateStr;
+
+  let statsHtml = '';
+  if (totalInc > 0)  statsHtml += `<div style="background:rgba(106,255,184,0.1);border:1px solid rgba(106,255,184,0.2);border-radius:8px;padding:8px 10px;flex:1;text-align:center"><div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:3px">Income</div><div style="font-family:'DM Mono',monospace;font-size:13px;font-weight:700;color:var(--accent3)">${fmtMoney(totalInc)}</div></div>`;
+  if (totalExp > 0)  statsHtml += `<div style="background:rgba(255,106,138,0.08);border:1px solid rgba(255,106,138,0.2);border-radius:8px;padding:8px 10px;flex:1;text-align:center"><div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:3px">Spent</div><div style="font-family:'DM Mono',monospace;font-size:13px;font-weight:700;color:var(--accent2)">${fmtMoney(totalExp)}</div></div>`;
+  if (totalTrf > 0)  statsHtml += `<div style="background:rgba(255,184,106,0.08);border:1px solid rgba(255,184,106,0.2);border-radius:8px;padding:8px 10px;flex:1;text-align:center"><div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:3px">Transfer</div><div style="font-family:'DM Mono',monospace;font-size:13px;font-weight:700;color:var(--accent4)">${fmtMoney(totalTrf)}</div></div>`;
+  if (totalInc > 0 && totalExp > 0) statsHtml += `<div style="background:rgba(124,106,255,0.08);border:1px solid rgba(124,106,255,0.2);border-radius:8px;padding:8px 10px;flex:1;text-align:center"><div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:3px">Net</div><div style="font-family:'DM Mono',monospace;font-size:13px;font-weight:700;color:${net>=0?'var(--accent3)':'var(--accent2)'}">${net>=0?'+':''}${fmtMoney(net)}</div></div>`;
+
+  document.getElementById('day-detail-stats').innerHTML = statsHtml;
+  document.getElementById('day-detail-txns').innerHTML = txns.length
+    ? `<div style="border:1px solid var(--border);border-radius:10px;padding:0 10px">${txns.map(t=>txnHTML(t)).join('')}</div>`
+    : '<div class="empty-state" style="padding:14px 0">No transactions</div>';
+
+  const panel = document.getElementById('day-detail-panel');
+  panel.style.display = 'block';
+  panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function closeDayDetail() {
+  selectedHeatmapDay = null;
+  document.getElementById('day-detail-panel').style.display = 'none';
+  renderHeatmap();
 }
 
 // ── KEVAI ──
@@ -1616,6 +1878,131 @@ function deleteGoal(i) {
     save(); renderGoals();
     deleteGoalFromSheet(id);
   }
+}
+
+// ── SOURCE DETAIL ──
+let currentSourceId = null;
+let currentSrcFilter = 'all';
+
+function openSourceDetail(sid) {
+  currentSourceId = sid;
+  currentSrcFilter = 'all';
+  const src = state.sources.find(s => String(s.id) === sid);
+  if (!src) return;
+
+  // Reset filter chips
+  document.querySelectorAll('#src-filter-chips .chip').forEach((c,i) => c.classList.toggle('selected', i===0));
+
+  const allSrcTxns = state.transactions.filter(t => String(t.source) === sid);
+  const income   = allSrcTxns.filter(t => t.type === 'income').reduce((a,t) => a+t.amount, 0);
+  const expense  = allSrcTxns.filter(t => t.type === 'expense').reduce((a,t) => a+t.amount, 0);
+  const tOut     = allSrcTxns.filter(t => t.type === 'transfer' && t.subtype === 'out').reduce((a,t) => a+t.amount, 0);
+  const tIn      = allSrcTxns.filter(t => t.type === 'transfer' && t.subtype === 'in').reduce((a,t) => a+t.amount, 0);
+  const tFee     = allSrcTxns.filter(t => t.type === 'transfer' && t.subtype === 'fee').reduce((a,t) => a+t.amount, 0);
+  const bal      = src.balance + income - expense - tOut + tIn - tFee;
+
+  // Header
+  const iconEl = document.getElementById('src-detail-icon');
+  iconEl.style.background = src.color + '22';
+  iconEl.style.border = `1.5px solid ${src.color}`;
+  iconEl.textContent = SOURCE_ICONS[src.type] || '💳';
+  document.getElementById('src-detail-name').textContent = src.name;
+  document.getElementById('src-detail-type').textContent = src.type;
+  document.getElementById('src-detail-balance').textContent = fmtMoney(bal);
+  document.getElementById('src-detail-balance').style.color = bal < 0 ? 'var(--accent2)' : 'var(--text)';
+
+  // Stats
+  const fees = allSrcTxns.filter(t => t.type==='transfer' && t.subtype==='fee').reduce((a,t)=>a+t.amount,0);
+  document.getElementById('src-detail-stats').innerHTML = `
+    <div style="background:rgba(106,255,184,0.08);border:1px solid rgba(106,255,184,0.2);border-radius:10px;padding:10px;text-align:center">
+      <div style="font-size:10px;color:var(--text3);margin-bottom:4px;text-transform:uppercase;letter-spacing:0.5px">Total In</div>
+      <div style="font-family:'DM Mono',monospace;font-size:13px;font-weight:700;color:var(--accent3)">${fmtMoney(income + tIn)}</div>
+    </div>
+    <div style="background:rgba(255,106,138,0.08);border:1px solid rgba(255,106,138,0.2);border-radius:10px;padding:10px;text-align:center">
+      <div style="font-size:10px;color:var(--text3);margin-bottom:4px;text-transform:uppercase;letter-spacing:0.5px">Total Out</div>
+      <div style="font-family:'DM Mono',monospace;font-size:13px;font-weight:700;color:var(--accent2)">${fmtMoney(expense + tOut + tFee)}</div>
+    </div>
+    <div style="background:rgba(255,184,106,0.08);border:1px solid rgba(255,184,106,0.2);border-radius:10px;padding:10px;text-align:center">
+      <div style="font-size:10px;color:var(--text3);margin-bottom:4px;text-transform:uppercase;letter-spacing:0.5px">Fees Paid</div>
+      <div style="font-family:'DM Mono',monospace;font-size:13px;font-weight:700;color:var(--accent4)">${fmtMoney(fees)}</div>
+    </div>`;
+
+  // Mini sparkline — last 6 months in vs out
+  const now = new Date();
+  const months = [];
+  for (let i = 5; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    months.push({ label: d.toLocaleDateString('en-PH', { month: 'short' }), month: d.getMonth(), year: d.getFullYear() });
+  }
+  const sparkData = months.map(m => {
+    const mTxns = allSrcTxns.filter(t => {
+      const d = new Date(t.date);
+      return d.getMonth() === m.month && d.getFullYear() === m.year;
+    });
+    const mIn  = mTxns.filter(t => t.type==='income' || (t.type==='transfer'&&t.subtype==='in')).reduce((a,t)=>a+t.amount,0);
+    const mOut = mTxns.filter(t => t.type==='expense' || (t.type==='transfer'&&(t.subtype==='out'||t.subtype==='fee'))).reduce((a,t)=>a+t.amount,0);
+    return { label: m.label, mIn, mOut };
+  });
+  const maxSpark = Math.max(...sparkData.map(d => Math.max(d.mIn, d.mOut)), 1);
+  document.getElementById('src-mini-chart').innerHTML = sparkData.map(d => {
+    const inH  = Math.max(Math.round((d.mIn  / maxSpark) * 100), d.mIn  > 0 ? 5 : 0);
+    const outH = Math.max(Math.round((d.mOut / maxSpark) * 100), d.mOut > 0 ? 5 : 0);
+    return `
+      <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;height:100%;justify-content:flex-end">
+        <div style="display:flex;gap:1px;align-items:flex-end;width:100%;height:calc(100% - 16px)">
+          <div style="flex:1;height:${inH}%;background:var(--accent3);border-radius:2px 2px 0 0;min-height:${d.mIn>0?3:0}px;opacity:0.8"></div>
+          <div style="flex:1;height:${outH}%;background:var(--accent2);border-radius:2px 2px 0 0;min-height:${d.mOut>0?3:0}px;opacity:0.8"></div>
+        </div>
+        <div style="font-size:8px;color:var(--text3)">${d.label}</div>
+      </div>`;
+  }).join('');
+
+  renderSrcTxns(sid, 'all');
+  openModal('source-detail-modal');
+}
+
+function srcFilter(f, el) {
+  currentSrcFilter = f;
+  document.querySelectorAll('#src-filter-chips .chip').forEach(c => c.classList.remove('selected'));
+  el.classList.add('selected');
+  renderSrcTxns(currentSourceId, f);
+}
+
+function renderSrcTxns(sid, filter) {
+  let txns = state.transactions
+    .filter(t => String(t.source) === sid && t.subtype !== 'in')
+    .sort((a, b) => new Date(b.date) - new Date(a.date));
+
+  if (filter === 'expense') txns = txns.filter(t => t.type === 'expense' || (t.type==='transfer'&&(t.subtype==='out'||t.subtype==='fee')));
+  if (filter === 'income')  txns = txns.filter(t => t.type === 'income');
+
+  const el = document.getElementById('src-detail-txns');
+  if (!txns.length) {
+    el.innerHTML = '<div class="empty-state" style="padding:20px 0">No transactions found</div>';
+    return;
+  }
+
+  // Group by month
+  const groups = {};
+  txns.forEach(t => {
+    const key = new Date(t.date).toLocaleDateString('en-PH', { month: 'long', year: 'numeric' });
+    if (!groups[key]) groups[key] = [];
+    groups[key].push(t);
+  });
+
+  el.innerHTML = Object.entries(groups).map(([month, list]) => {
+    const monthNet = list.reduce((s, t) => {
+      if (t.type === 'income') return s + t.amount;
+      return s - t.amount;
+    }, 0);
+    const netColor = monthNet >= 0 ? 'var(--accent3)' : 'var(--accent2)';
+    return `
+      <div style="padding:10px 0 4px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--border);margin-bottom:2px">
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:var(--text2)">${month}</div>
+        <div style="font-size:11px;font-family:'DM Mono',monospace;color:${netColor}">${monthNet>=0?'+':''}${fmtMoney(monthNet)}</div>
+      </div>
+      ${list.map(t => txnHTML(t)).join('')}`;
+  }).join('');
 }
 
 function addSource() {
