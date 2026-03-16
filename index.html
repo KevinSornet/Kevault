@@ -1105,6 +1105,12 @@
     <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:0.8px;margin-bottom:8px">Last 6 Months Activity</div>
     <div style="height:60px;display:flex;align-items:flex-end;gap:4px;margin-bottom:18px;padding-bottom:16px;position:relative" id="src-mini-chart"></div>
 
+    <!-- Linked Goals -->
+    <div id="src-goals-section" style="display:none;margin-bottom:18px">
+      <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:0.8px;margin-bottom:10px">Savings Goals from this Account</div>
+      <div id="src-goals-list"></div>
+    </div>
+
     <!-- Transaction History -->
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
       <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:0.8px">Transaction History</div>
@@ -2078,7 +2084,124 @@ function openSourceDetail(sid) {
   }).join('');
 
   renderSrcTxns(sid, 'all');
+  renderSrcGoals(sid, src, bal);
   openModal('source-detail-modal');
+}
+
+function renderSrcGoals(sid, src, currentBal) {
+  const linkedGoals = state.goals.filter(g => String(g.sourceId) === String(sid));
+  const section = document.getElementById('src-goals-section');
+  const list    = document.getElementById('src-goals-list');
+
+  if (!linkedGoals.length) {
+    section.style.display = 'none';
+    return;
+  }
+  section.style.display = 'block';
+
+  // Total committed to goals vs total balance
+  const totalTargets   = linkedGoals.reduce((s, g) => s + g.target, 0);
+  const totalSaved     = linkedGoals.reduce((s, g) => s + g.current, 0);
+  const totalRemaining = linkedGoals.reduce((s, g) => s + Math.max(0, g.target - g.current), 0);
+
+  // Summary bar — how much of the current balance is "spoken for" by goals
+  const spokenFor    = Math.min(totalRemaining, Math.max(0, currentBal));
+  const freeBalance  = Math.max(0, currentBal - totalRemaining);
+  const spokenPct    = currentBal > 0 ? Math.round((spokenFor / currentBal) * 100) : 0;
+
+  const colors = ['var(--accent)', 'var(--accent2)', 'var(--accent3)', 'var(--accent4)', '#6ab8ff', '#e96aff'];
+
+  list.innerHTML = `
+    <!-- Balance allocation overview -->
+    <div style="background:var(--surface2);border:1px solid var(--border);border-radius:12px;padding:14px;margin-bottom:12px">
+      <div style="font-size:11px;color:var(--text2);margin-bottom:8px;font-weight:700">Balance Allocation</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:10px">
+        <div style="text-align:center">
+          <div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:3px">Current Balance</div>
+          <div style="font-family:'DM Mono',monospace;font-size:13px;font-weight:700;color:var(--text)">${fmtMoney(currentBal)}</div>
+        </div>
+        <div style="text-align:center">
+          <div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:3px">Needed for Goals</div>
+          <div style="font-family:'DM Mono',monospace;font-size:13px;font-weight:700;color:var(--accent2)">${fmtMoney(totalRemaining)}</div>
+        </div>
+        <div style="text-align:center">
+          <div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:3px">Freely Available</div>
+          <div style="font-family:'DM Mono',monospace;font-size:13px;font-weight:700;color:${freeBalance >= 0 ? 'var(--accent3)' : 'var(--accent2)'}">${fmtMoney(freeBalance)}</div>
+        </div>
+      </div>
+      <!-- Stacked allocation bar -->
+      <div style="height:8px;background:var(--surface);border-radius:10px;overflow:hidden;display:flex">
+        <div style="width:${spokenPct}%;background:var(--accent2);transition:width 0.7s ease"></div>
+        <div style="flex:1;background:var(--accent3);opacity:0.5"></div>
+      </div>
+      <div style="display:flex;justify-content:space-between;margin-top:5px;font-size:9px;color:var(--text3)">
+        <span style="color:var(--accent2)">▪ ${spokenPct}% allocated to goals</span>
+        <span style="color:var(--accent3)">▪ ${100 - spokenPct}% free</span>
+      </div>
+    </div>
+
+    <!-- Individual goal cards -->
+    ${linkedGoals.map((g, i) => {
+      const pct       = g.target > 0 ? Math.min(100, Math.round((g.current / g.target) * 100)) : 0;
+      const remaining = Math.max(0, g.target - g.current);
+      const color     = colors[i % colors.length];
+      const deadline  = g.deadline ? new Date(g.deadline).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' }) : null;
+
+      // Savings txns that were contributed to this goal from this source
+      const contribTxns = state.transactions
+        .filter(t => t.type === 'expense' && String(t.source) === String(sid) && t.desc && t.desc.startsWith('Savings: ' + g.name))
+        .sort((a, b) => new Date(b.date) - new Date(a.date));
+      const totalContrib = contribTxns.reduce((s, t) => s + t.amount, 0);
+
+      return `
+        <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px;margin-bottom:10px">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+            <div style="font-size:14px;font-weight:800">${g.emoji || '🎯'} ${g.name}</div>
+            <div style="font-family:'DM Mono',monospace;font-size:13px;font-weight:700;color:${color}">${pct}%</div>
+          </div>
+          ${deadline ? `<div style="font-size:10px;color:var(--text3);margin-bottom:8px">📅 Due ${deadline}</div>` : ''}
+
+          <!-- Progress bar -->
+          <div style="height:6px;background:var(--surface2);border-radius:10px;overflow:hidden;margin-bottom:6px">
+            <div style="width:${pct}%;height:100%;background:${color};border-radius:10px;transition:width 0.7s ease"></div>
+          </div>
+
+          <!-- Saved vs remaining -->
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:10px">
+            <div style="text-align:center;background:var(--surface2);border-radius:8px;padding:8px 4px">
+              <div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:0.4px;margin-bottom:2px">Target</div>
+              <div style="font-family:'DM Mono',monospace;font-size:11px;font-weight:700">${fmtMoney(g.target)}</div>
+            </div>
+            <div style="text-align:center;background:rgba(106,255,184,0.08);border-radius:8px;padding:8px 4px;border:1px solid rgba(106,255,184,0.2)">
+              <div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:0.4px;margin-bottom:2px">Saved</div>
+              <div style="font-family:'DM Mono',monospace;font-size:11px;font-weight:700;color:var(--accent3)">${fmtMoney(g.current)}</div>
+            </div>
+            <div style="text-align:center;background:rgba(255,106,138,0.06);border-radius:8px;padding:8px 4px;border:1px solid rgba(255,106,138,0.15)">
+              <div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:0.4px;margin-bottom:2px">Still Needed</div>
+              <div style="font-family:'DM Mono',monospace;font-size:11px;font-weight:700;color:var(--accent2)">${fmtMoney(remaining)}</div>
+            </div>
+          </div>
+
+          <!-- Contribution history from this source -->
+          ${contribTxns.length > 0 ? `
+            <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:0.6px;margin-bottom:6px">
+              Contributions from ${src.name}
+              <span style="color:var(--accent3);margin-left:6px">${fmtMoney(totalContrib)} total</span>
+            </div>
+            <div style="border:1px solid var(--border);border-radius:8px;overflow:hidden">
+              ${contribTxns.slice(0, 5).map(t => `
+                <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;border-bottom:1px solid var(--border);font-size:12px">
+                  <div>
+                    <div style="font-weight:600">💰 Contribution</div>
+                    <div style="font-size:10px;color:var(--text3)">${new Date(t.date).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })}</div>
+                  </div>
+                  <div style="font-family:'DM Mono',monospace;font-weight:600;color:var(--accent3)">+${fmtMoney(t.amount)}</div>
+                </div>`).join('')}
+              ${contribTxns.length > 5 ? `<div style="padding:8px 12px;font-size:11px;color:var(--text3);text-align:center">+${contribTxns.length - 5} more contributions</div>` : ''}
+            </div>` : `
+            <div style="font-size:11px;color:var(--text3);font-style:italic">No contributions logged yet from ${src.name}. Tap "+ Add Funds" on the goal to start.</div>`}
+        </div>`;
+    }).join('')}`;
 }
 
 function srcFilter(f, el) {
