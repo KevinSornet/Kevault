@@ -468,6 +468,7 @@
 <div class="header">
   <div class="logo">Vault<span>.</span></div>
   <div class="header-icons">
+    <div id="sync-status-dot" title="Sync status" style="width:8px;height:8px;border-radius:50%;background:var(--text3);margin-right:2px;align-self:center;transition:background 0.3s,box-shadow 0.3s" onclick="openModal('sheets-modal')"></div>
     <div class="icon-btn" onclick="openModal('sheets-modal')" title="Google Sheets">📊</div>
     <div class="icon-btn" onclick="openModal('add-source-modal')" title="Manage Sources">💳</div>
   </div>
@@ -478,6 +479,17 @@
 
   <!-- ── DASHBOARD PAGE ── -->
   <div class="page active" id="page-dashboard">
+
+    <!-- First-time setup banner -->
+    <div id="setup-banner" style="display:none;background:linear-gradient(135deg,rgba(124,106,255,0.12),rgba(106,255,184,0.06));border:1px solid rgba(124,106,255,0.25);border-radius:14px;padding:14px 16px;margin-bottom:14px;position:relative">
+      <div style="font-size:13px;font-weight:700;margin-bottom:4px">📗 Back up your data to Google Sheets</div>
+      <div style="font-size:12px;color:var(--text2);margin-bottom:10px;line-height:1.6">Connect a sheet so your transactions are always safe — auto-syncs every time you add something.</div>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-primary" style="flex:1;padding:9px;font-size:12px" onclick="openModal('sheets-modal')">Set up (30 sec)</button>
+        <button class="btn btn-secondary" style="padding:9px 14px;font-size:12px" onclick="dismissSetupBanner()">Later</button>
+      </div>
+    </div>
+
     <div class="card balance-card">
       <div class="card-glow" style="background:var(--accent)"></div>
       <div class="balance-label">Total Net Worth</div>
@@ -1880,9 +1892,9 @@ function addTransaction() {
     save(); render();
     closeModal('add-txn-modal');
     showToast(`🔁 Transferred ${fmtMoney(amount)}${fee > 0 ? ` · Fee: ${fmtMoney(fee)}` : ''}`);
-    appendTxnToSheet(outTxn);
-    appendTxnToSheet(inTxn);
-    if (feeTxn) appendTxnToSheet(feeTxn);
+    autoSync('txn', 'add', outTxn);
+    autoSync('txn', 'add', inTxn);
+    if (feeTxn) autoSync('txn', 'add', feeTxn);
 
     document.getElementById('transfer-amount').value = '';
     document.getElementById('transfer-fee').value = '';
@@ -1900,12 +1912,15 @@ function addTransaction() {
   if (!source) { showToast('Select a source account'); return; }
 
   if (editingTxnId) {
+    const idBeforeReset = editingTxnId;
     saveEditTxn(amount, desc, source, date);
     editingTxnId = null;
     document.querySelector('#add-txn-modal .btn-primary').textContent = 'Save Transaction';
     save(); render();
     closeModal('add-txn-modal');
     showToast('Transaction updated ✓');
+    const updated = state.transactions.find(t => t.id === idBeforeReset);
+    if (updated) autoSync('txn', 'update', updated);
     return;
   }
 
@@ -1916,7 +1931,7 @@ function addTransaction() {
   showToast('Transaction saved ✓');
   document.getElementById('txn-amount').value = '';
   document.getElementById('txn-desc').value = '';
-  appendTxnToSheet(txn);
+  autoSync('txn', 'add', txn);
 }
 
 function addGoal() {
@@ -1939,7 +1954,7 @@ function addGoal() {
   document.getElementById('goal-target').value = '';
   document.getElementById('goal-current').value = '';
   document.getElementById('goal-monthly').value = '';
-  appendGoalToSheet(g);
+  autoSync('goal', 'add', g);
 }
 
 function addToGoal(i) {
@@ -1962,14 +1977,14 @@ function addToGoal(i) {
       date: new Date().toISOString().split('T')[0]
     };
     state.transactions.push(txn);
-    appendTxnToSheet(txn);
+    autoSync('txn', 'add', txn);
     showToast(`${fmtMoney(amt)} moved from ${src ? src.name : 'account'} → ${g.name}`);
   } else {
     showToast('Added ' + fmtMoney(amt) + ' to goal!');
   }
 
   save(); render();
-  updateGoalInSheet(state.goals[i]);
+  autoSync('goal', 'update', state.goals[i]);
 }
 
 function deleteGoal(i) {
@@ -1977,7 +1992,7 @@ function deleteGoal(i) {
     const id = state.goals[i].id;
     state.goals.splice(i, 1);
     save(); renderGoals();
-    deleteGoalFromSheet(id);
+    autoSync('goal', 'delete', id);
   }
 }
 
@@ -2120,13 +2135,13 @@ function addSource() {
   showToast('Source added ✓');
   document.getElementById('source-name').value = '';
   document.getElementById('source-balance').value = '';
-  appendSourceToSheet(s);
+  autoSync('source', 'add', s);
 }
 
 function deleteSource(id) {
   state.sources = state.sources.filter(s => s.id !== id);
   save(); render(); renderSourcesModal();
-  deleteSourceFromSheet(id);
+  autoSync('source', 'delete', id);
 }
 
 function renderSourcesModal() {
@@ -2189,7 +2204,7 @@ function deleteTxn(id) {
   state.transactions = state.transactions.filter(t => t.id !== id);
   save(); render();
   showToast('Transaction deleted');
-  deleteTxnFromSheet(id);
+  autoSync('txn', 'delete', id);
 }
 
 let editingTxnId = null;
@@ -2223,7 +2238,7 @@ function saveEditTxn(amount, desc, source, date) {
     category: state.selectedCategory || state.transactions[idx].category,
     source, date
   };
-  updateTxnInSheet(state.transactions[idx]);
+  autoSync('txn', 'update', state.transactions[idx]);
   return true;
 }
 
@@ -2576,37 +2591,162 @@ async function deleteSourceFromSheet(id) {
   catch(e) { console.warn('Source delete failed', e); }
 }
 
-// ── FULL SYNC ──
-async function syncAllToSheet() {
-  if (!state.sheetsId) {
-    showToast('No sheet linked — set one up first');
-    return;
-  }
+// ── SYNC SAFETY ──
+// Returns true if local data is considered "empty" (not safe to upload)
+function localIsEmpty() {
+  return state.transactions.length === 0 && state.sources.length === 0;
+}
 
-  // If token expired/missing but we have a client ID, re-auth then sync
-  if (!gAccessToken) {
-    if (!state.googleClientId) {
-      showToast('Sign in via the 📊 menu first');
-      return;
+// Returns count of data rows in sheet tabs
+async function sheetDataCounts() {
+  try {
+    const [txnRows, srcRows] = await Promise.all([
+      readSheetTab('Transactions'),
+      readSheetTab('Sources')
+    ]);
+    return { txns: txnRows.filter(r=>r[0]).length, sources: srcRows.filter(r=>r[0]).length };
+  } catch(e) { return { txns: 0, sources: 0 }; }
+}
+
+// ── SYNC STATUS DOT ──
+function setSyncDot(status) {
+  // status: 'idle' | 'syncing' | 'synced' | 'error' | 'off'
+  const dot = document.getElementById('sync-status-dot');
+  if (!dot) return;
+  const styles = {
+    off:     { bg: 'var(--text3)', shadow: 'none',                             title: 'No sheet linked' },
+    idle:    { bg: 'var(--accent)', shadow: '0 0 5px var(--accent)',            title: 'Sheet linked' },
+    syncing: { bg: 'var(--accent4)', shadow: '0 0 8px var(--accent4)',          title: 'Syncing…' },
+    synced:  { bg: 'var(--accent3)', shadow: '0 0 6px var(--accent3)',          title: 'Synced ✓' },
+    error:   { bg: 'var(--accent2)', shadow: '0 0 6px var(--accent2)',          title: 'Sync error' },
+    blocked: { bg: 'var(--accent4)', shadow: 'none',                            title: 'Sync blocked — local data empty' }
+  };
+  const s = styles[status] || styles.off;
+  dot.style.background  = s.bg;
+  dot.style.boxShadow   = s.shadow;
+  dot.title             = s.title;
+}
+
+// Auto-sync a single row after every local change (silent, non-blocking)
+async function autoSync(type, action, payload) {
+  if (!state.sheetsId) return;
+  if (localIsEmpty()) { setSyncDot('blocked'); return; }
+  setSyncDot('syncing');
+  try {
+    if (type === 'txn') {
+      if (action === 'add')    await appendTxnToSheet(payload);
+      if (action === 'update') await updateTxnInSheet(payload);
+      if (action === 'delete') await deleteTxnFromSheet(payload);
+    } else if (type === 'goal') {
+      if (action === 'add')    await appendGoalToSheet(payload);
+      if (action === 'update') await updateGoalInSheet(payload);
+      if (action === 'delete') await deleteGoalFromSheet(payload);
+    } else if (type === 'source') {
+      if (action === 'add')    await appendSourceToSheet(payload);
+      if (action === 'delete') await deleteSourceFromSheet(payload);
     }
-    showToast('Re-authenticating…');
+    setSyncDot('synced');
+    setTimeout(() => setSyncDot('idle'), 3000);
+  } catch(e) {
+    setSyncDot('error');
+    console.warn('Auto-sync failed', e);
+  }
+}
+
+// ── SMART FULL SYNC ──
+async function syncAllToSheet() {
+  if (!state.sheetsId) { showToast('No sheet linked — set one up first'); return; }
+  if (!gAccessToken) {
+    if (!state.googleClientId) { showToast('Sign in via the 📊 menu first'); return; }
     await reAuthAndRun(() => syncAllToSheet());
     return;
   }
 
-  showToast('Syncing…');
+  // Safety: block upload if local is empty
+  if (localIsEmpty()) {
+    showToast('⚠️ Local data is empty — upload blocked');
+    setSyncDot('blocked');
+    return;
+  }
+
+  setSyncDot('syncing');
+  showToast('Uploading to sheet…');
   try {
     for (const tab of ['Transactions!A2:Z', 'Goals!A2:Z', 'Sources!A2:Z']) {
       await sheetRequest('POST', `/values/${encodeURIComponent(tab)}:clear`);
     }
     await pushAllData(state.sheetsId);
-    showToast('✓ All data synced to Sheet!');
+    setSyncDot('synced');
+    setTimeout(() => setSyncDot('idle'), 3000);
+    showToast('✓ All data uploaded to Sheet!');
   } catch(e) {
+    setSyncDot('error');
     showToast('Sync failed: ' + e.message);
   }
 }
 
-// Re-authenticate silently using saved client ID, then run a callback
+// ── IMPORT FROM SHEET → LOCAL ──
+async function importFromSheet() {
+  if (!state.sheetsId) { showToast('No sheet linked'); return; }
+  if (!await ensureAuth()) { showToast('Sign in first'); return; }
+
+  // Safety: warn if sheet appears empty before overwriting local
+  setSyncDot('syncing');
+  const counts = await sheetDataCounts();
+  if (counts.txns === 0 && counts.sources === 0) {
+    setSyncDot('blocked');
+    showToast('⚠️ Sheet appears empty — download blocked');
+    if (!confirm('The sheet looks empty (no transactions, no sources). Are you sure you want to download and overwrite your local data?')) return;
+  } else {
+    // Warn if local has data that would be lost
+    if (!localIsEmpty()) {
+      if (!confirm(`This will replace your local data (${state.transactions.length} transactions, ${state.sources.length} sources) with the sheet's data (${counts.txns} transactions, ${counts.sources} sources). Continue?`)) {
+        setSyncDot('idle');
+        return;
+      }
+    }
+  }
+
+  showToast('Downloading from sheet…');
+  try {
+    const [txnRows, goalRows, srcRows] = await Promise.all([
+      readSheetTab('Transactions'),
+      readSheetTab('Goals'),
+      readSheetTab('Sources')
+    ]);
+
+    const sources = srcRows.filter(r => r[0]).map(r => ({
+      id: Number(r[0]) || r[0], name: r[1] || '',
+      type: r[2] || 'bank', balance: parseFloat(r[3]) || 0, color: r[4] || '#7c6aff'
+    }));
+    const transactions = txnRows.filter(r => r[0]).map(r => ({
+      id: Number(r[0]) || r[0], date: r[1] || '', type: r[2] || 'expense',
+      desc: r[3] || '', category: r[4] || '', amount: parseFloat(r[5]) || 0,
+      source: Number(r[6]) || r[6]
+    }));
+    const goals = goalRows.filter(r => r[0]).map(r => {
+      const srcMatch = sources.find(s => s.name === r[8]);
+      return {
+        id: Number(r[0]) || r[0], name: r[1] || '', emoji: r[2] || '🎯',
+        target: parseFloat(r[3]) || 0, current: parseFloat(r[4]) || 0,
+        deadline: r[7] || '', sourceId: srcMatch ? srcMatch.id : '', monthly: parseFloat(r[9]) || 0
+      };
+    });
+
+    state.transactions = transactions;
+    state.goals = goals;
+    state.sources = sources;
+    save(); render();
+    setSyncDot('synced');
+    setTimeout(() => setSyncDot('idle'), 3000);
+    closeModal('sheets-modal');
+    showToast(`✓ Imported ${transactions.length} txns, ${goals.length} goals, ${sources.length} sources`);
+  } catch(e) {
+    setSyncDot('error');
+    showToast('Import failed: ' + e.message);
+    console.error(e);
+  }
+}
 function reAuthAndRun(callback) {
   return new Promise((resolve) => {
     const clientId = state.googleClientId || GOOGLE_CLIENT_ID;
@@ -2666,73 +2806,6 @@ function saveSheetLink() {
   showToast('Google Sheet linked! 📗');
 }
 
-// ── IMPORT FROM SHEET → LOCAL ──
-async function importFromSheet() {
-  if (!state.sheetsId) { showToast('No sheet linked'); return; }
-  if (!await ensureAuth()) { showToast('Sign in first'); return; }
-
-  if (!confirm('This will overwrite your local data with whatever is in the sheet. Continue?')) return;
-
-  showToast('Downloading from sheet…');
-  try {
-    const [txnRows, goalRows, srcRows] = await Promise.all([
-      readSheetTab('Transactions'),
-      readSheetTab('Goals'),
-      readSheetTab('Sources')
-    ]);
-
-    // Parse Sources: ID, Name, Type, Balance, Color
-    const sources = srcRows
-      .filter(r => r[0])
-      .map(r => ({
-        id: Number(r[0]) || r[0],
-        name: r[1] || '',
-        type: r[2] || 'bank',
-        balance: parseFloat(r[3]) || 0,
-        color: r[4] || '#7c6aff'
-      }));
-
-    // Parse Transactions: ID, Date, Type, Desc, Category, Amount, Source, SourceName
-    const transactions = txnRows
-      .filter(r => r[0])
-      .map(r => ({
-        id: Number(r[0]) || r[0],
-        date: r[1] || '',
-        type: r[2] || 'expense',
-        desc: r[3] || '',
-        category: r[4] || '',
-        amount: parseFloat(r[5]) || 0,
-        source: Number(r[6]) || r[6]
-      }));
-
-    // Parse Goals: ID, Name, Emoji, Target, Saved, Remaining, %, Deadline, LinkedSource, Monthly
-    const goals = goalRows
-      .filter(r => r[0])
-      .map(r => {
-        const srcMatch = sources.find(s => s.name === r[8]);
-        return {
-          id: Number(r[0]) || r[0],
-          name: r[1] || '',
-          emoji: r[2] || '🎯',
-          target: parseFloat(r[3]) || 0,
-          current: parseFloat(r[4]) || 0,
-          deadline: r[7] || '',
-          sourceId: srcMatch ? srcMatch.id : '',
-          monthly: parseFloat(r[9]) || 0
-        };
-      });
-
-    state.transactions = transactions;
-    state.goals = goals;
-    state.sources = sources;
-    save(); render();
-    closeModal('sheets-modal');
-    showToast(`✓ Imported ${transactions.length} txns, ${goals.length} goals, ${sources.length} sources`);
-  } catch(e) {
-    showToast('Import failed: ' + e.message);
-    console.error(e);
-  }
-}
 let driveSearchTimer = null;
 
 function debounceDriveSearch() {
@@ -2823,7 +2896,8 @@ function updateSheetsUI() {
   txt.textContent = linked ? ('Connected · ' + (state.sheetsName || 'Sheet')) : 'Not connected';
   txt.style.color = linked ? 'var(--accent3)' : 'var(--text2)';
   urlDisp.textContent = state.sheetsUrl || 'No sheet linked';
-
+  setSyncDot(state.sheetsUrl ? 'idle' : 'off');
+}
   if (linked) {
     document.getElementById('linked-sheet-name').textContent = state.sheetsName || 'Sheet';
     document.getElementById('linked-sheet-url-display').textContent = state.sheetsUrl;
@@ -2833,6 +2907,9 @@ function updateSheetsUI() {
   if (!state.googleClientId) {
     state.googleClientId = GOOGLE_CLIENT_ID;
   }
+
+  // Keep header sync dot in sync with sheet link status
+  setSyncDot(linked ? 'idle' : 'off');
 }
 
 function changeCurrency(c) {
@@ -2908,8 +2985,109 @@ function showToast(msg) {
   setTimeout(() => el.classList.remove('show'), 2200);
 }
 
+function load() {
+  const saved = localStorage.getItem('vault-state');
+  if (saved) state = { ...state, ...JSON.parse(saved) };
+  // Always pull googleClientId from constant if not saved
+  if (!state.googleClientId && GOOGLE_CLIENT_ID) state.googleClientId = GOOGLE_CLIENT_ID;
+  render();
+  initSyncOnLoad();
+}
+
+function initSyncOnLoad() {
+  // Show setup banner if no sheet linked and not dismissed
+  if (!state.sheetsUrl && !state.bannerDismissed) {
+    document.getElementById('setup-banner').style.display = 'block';
+  }
+  // Set initial sync dot state
+  setSyncDot(state.sheetsUrl ? 'idle' : 'off');
+  // If sheet is linked, re-auth silently then do a startup sync
+  if (state.sheetsId && state.googleClientId) {
+    setTimeout(() => reAuthAndRun(startupSync), 1500);
+  }
+}
+
+async function startupSync() {
+  if (!state.sheetsId || !gAccessToken) return;
+
+  setSyncDot('syncing');
+  try {
+    const counts = await sheetDataCounts();
+    const sheetHasData  = counts.txns > 0 || counts.sources > 0;
+    const localHasData  = !localIsEmpty();
+
+    if (!sheetHasData && !localHasData) {
+      // Both empty — nothing to do
+      setSyncDot('idle');
+      return;
+    }
+
+    if (!sheetHasData && localHasData) {
+      // Sheet is empty, local has data → upload local to sheet
+      for (const tab of ['Transactions!A2:Z', 'Goals!A2:Z', 'Sources!A2:Z']) {
+        await sheetRequest('POST', `/values/${encodeURIComponent(tab)}:clear`);
+      }
+      await pushAllData(state.sheetsId);
+      setSyncDot('synced');
+      showToast('📗 Sheet updated on startup');
+      setTimeout(() => setSyncDot('idle'), 3000);
+      return;
+    }
+
+    if (sheetHasData && !localHasData) {
+      // Sheet has data, local is empty → pull from sheet automatically
+      await importFromSheet();
+      return;
+    }
+
+    // Both have data — do a quiet upload to keep sheet in sync with local
+    // (local is always the source of truth when both exist)
+    if (localHasData) {
+      for (const tab of ['Transactions!A2:Z', 'Goals!A2:Z', 'Sources!A2:Z']) {
+        await sheetRequest('POST', `/values/${encodeURIComponent(tab)}:clear`);
+      }
+      await pushAllData(state.sheetsId);
+      setSyncDot('synced');
+      setTimeout(() => setSyncDot('idle'), 3000);
+    }
+  } catch(e) {
+    setSyncDot('error');
+    console.warn('Startup sync failed:', e);
+  }
+}
+
+function dismissSetupBanner() {
+  state.bannerDismissed = true;
+  save();
+  document.getElementById('setup-banner').style.display = 'none';
+}
+
 // ── INIT ──
 load();
+
+// 5-minute interval background sync
+setInterval(async () => {
+  if (!state.sheetsId || !gAccessToken || localIsEmpty()) return;
+  setSyncDot('syncing');
+  try {
+    for (const tab of ['Transactions!A2:Z', 'Goals!A2:Z', 'Sources!A2:Z']) {
+      await sheetRequest('POST', `/values/${encodeURIComponent(tab)}:clear`);
+    }
+    await pushAllData(state.sheetsId);
+    setSyncDot('synced');
+    setTimeout(() => setSyncDot('idle'), 3000);
+  } catch(e) {
+    setSyncDot('error');
+  }
+}, 5 * 60 * 1000);
+
+// beforeunload: attempt a final sync if there's unsaved sheet changes
+window.addEventListener('beforeunload', () => {
+  if (state.sheetsId && gAccessToken && !localIsEmpty()) {
+    // Use sendBeacon-style fire-and-forget (best effort)
+    pushAllData(state.sheetsId).catch(() => {});
+  }
+});
 </script>
 </body>
 </html>
