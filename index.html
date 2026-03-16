@@ -2896,8 +2896,7 @@ function updateSheetsUI() {
   txt.textContent = linked ? ('Connected · ' + (state.sheetsName || 'Sheet')) : 'Not connected';
   txt.style.color = linked ? 'var(--accent3)' : 'var(--text2)';
   urlDisp.textContent = state.sheetsUrl || 'No sheet linked';
-  setSyncDot(state.sheetsUrl ? 'idle' : 'off');
-}
+
   if (linked) {
     document.getElementById('linked-sheet-name').textContent = state.sheetsName || 'Sheet';
     document.getElementById('linked-sheet-url-display').textContent = state.sheetsUrl;
