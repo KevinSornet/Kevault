@@ -958,7 +958,7 @@
     <div class="modal-title">Manage Sources</div>
     <div id="sources-list-modal"></div>
     <div class="divider"></div>
-    <div style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:var(--text2);margin-bottom:12px">Add New Source</div>
+    <div id="source-form-title" style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:var(--text2);margin-bottom:12px">Add New Source</div>
     <div class="form-group">
       <label>Account Name</label>
       <input type="text" id="source-name" placeholder="e.g. BDO Savings, GCash, Cash..." />
@@ -974,18 +974,19 @@
       </select>
     </div>
     <div class="form-group">
-      <label>Current Balance</label>
+      <label>Starting Balance</label>
       <div class="amount-input-wrap">
         <span class="currency-sym">₱</span>
         <input type="number" id="source-balance" placeholder="0.00" inputmode="decimal" />
       </div>
+      <div style="font-size:11px;color:var(--text3);margin-top:4px">This is the base balance — transactions are calculated on top of this.</div>
     </div>
     <div class="form-group">
       <label>Color</label>
       <div class="chip-row" id="color-chips"></div>
     </div>
-    <button class="btn btn-primary" onclick="addSource()">Add Source</button>
-    <button class="btn btn-secondary" style="margin-top:8px" onclick="closeModal('add-source-modal')">Done</button>
+    <button class="btn btn-primary" id="source-save-btn" onclick="saveSource()">Add Source</button>
+    <button class="btn btn-secondary" style="margin-top:8px" id="source-cancel-btn" onclick="cancelEditSource()">Done</button>
   </div>
 </div>
 
@@ -1632,29 +1633,32 @@ function closeDayDetail() {
 }
 
 // ── KEVAI ──
-// KevAI requires a tiny proxy server to make API calls from the browser.
-// See the setup instructions shown in the UI below.
-const KEVAI_PROXY_URL = 'https://kevai-proxy.kevinsornet.workers.dev'; // e.g. 'https://your-worker.workers.dev'
+// Set your Cloudflare Worker URL here after deploying it.
+// Leave empty to see setup instructions.
+const KEVAI_PROXY_URL = 'https://kevai-proxy.kevinsornet.workers.dev'; // e.g. 'https://kevai-proxy.yourname.workers.dev'
 
 async function runKevAI() {
   const btn = document.getElementById('kevai-refresh-btn');
   const content = document.getElementById('kevai-content');
 
-  if (!KEVAI_PROXY_URL) {
+  // Show setup instructions if no proxy URL set — do this FIRST before anything else
+  if (!KEVAI_PROXY_URL || KEVAI_PROXY_URL.trim() === '') {
     content.innerHTML = `
       <div style="font-size:13px;line-height:1.8;color:var(--text2)">
         <div style="font-size:14px;font-weight:800;color:var(--text);margin-bottom:10px">⚙️ One-time setup needed</div>
         KevAI needs a free proxy to make AI calls securely from your browser. Here's how to set it up in ~3 minutes:
         <div style="margin-top:12px;background:var(--surface2);border-radius:10px;padding:12px;border:1px solid var(--border);font-size:12px;line-height:2">
           <strong style="color:var(--accent)">1.</strong> Go to <a href="https://workers.cloudflare.com" target="_blank" style="color:var(--accent)">workers.cloudflare.com</a> and sign up free<br>
-          <strong style="color:var(--accent)">2.</strong> Create a new Worker and paste the proxy code below<br>
-          <strong style="color:var(--accent)">3.</strong> Add your Anthropic API key as a secret named <code style="background:var(--surface);padding:1px 5px;border-radius:4px">ANTHROPIC_KEY</code><br>
-          <strong style="color:var(--accent)">4.</strong> Copy your Worker URL and paste it into <code style="background:var(--surface);padding:1px 5px;border-radius:4px">KEVAI_PROXY_URL</code> in the app code
+          <strong style="color:var(--accent)">2.</strong> Create a new Worker → delete default code → paste the code below<br>
+          <strong style="color:var(--accent)">3.</strong> Go to Worker <strong>Settings → Variables and Secrets → Add Secret</strong><br>
+          &nbsp;&nbsp;&nbsp;&nbsp;Name: <code style="background:var(--surface);padding:1px 6px;border-radius:4px;color:var(--accent3)">ANTHROPIC_KEY</code> · Value: your key from <a href="https://console.anthropic.com/settings/api-keys" target="_blank" style="color:var(--accent)">console.anthropic.com</a><br>
+          <strong style="color:var(--accent)">4.</strong> Click <strong>Deploy</strong> → copy the Worker URL<br>
+          <strong style="color:var(--accent)">5.</strong> In your <code style="background:var(--surface);padding:1px 6px;border-radius:4px;color:var(--accent3)">index.html</code>, set <code style="background:var(--surface);padding:1px 6px;border-radius:4px;color:var(--accent3)">KEVAI_PROXY_URL = 'https://your-worker.workers.dev'</code>
         </div>
         <div style="margin-top:10px;background:var(--surface2);border-radius:10px;padding:12px;border:1px solid var(--border)">
-          <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:0.8px;margin-bottom:8px">Cloudflare Worker Code — copy & paste this:</div>
-          <pre style="font-size:10px;color:var(--accent3);overflow-x:auto;white-space:pre-wrap;line-height:1.6">export default {
-  async fetch(req) {
+          <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:0.8px;margin-bottom:8px">Worker Code — copy everything below:</div>
+          <pre style="font-size:10px;color:var(--accent3);overflow-x:auto;white-space:pre-wrap;line-height:1.7;user-select:all">export default {
+  async fetch(req, env) {
     if (req.method === 'OPTIONS') return new Response(null, { headers: cors() });
     const body = await req.json();
     const res = await fetch('https://api.anthropic.com/v1/messages', {
@@ -2121,21 +2125,81 @@ function renderSrcTxns(sid, filter) {
   }).join('');
 }
 
-function addSource() {
-  const name = document.getElementById('source-name').value.trim();
-  const type = document.getElementById('source-type').value;
+// ── SOURCE EDIT ──
+let editingSourceId = null;
+
+function openEditSource(id) {
+  const src = state.sources.find(s => s.id === id);
+  if (!src) return;
+  editingSourceId = id;
+
+  // Populate form fields
+  document.getElementById('source-name').value = src.name;
+  document.getElementById('source-type').value = src.type;
+  document.getElementById('source-balance').value = src.balance;
+  state.selectedColor = src.color;
+  renderColorChips();
+
+  // Update UI to show edit mode
+  document.getElementById('source-form-title').textContent = 'Edit Source';
+  document.getElementById('source-save-btn').textContent = 'Save Changes';
+  document.getElementById('source-cancel-btn').textContent = 'Cancel';
+
+  // Scroll form into view
+  document.getElementById('source-form-title').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function cancelEditSource() {
+  if (editingSourceId) {
+    // Reset form back to add mode
+    editingSourceId = null;
+    document.getElementById('source-name').value = '';
+    document.getElementById('source-balance').value = '';
+    document.getElementById('source-type').value = 'bank';
+    document.getElementById('source-form-title').textContent = 'Add New Source';
+    document.getElementById('source-save-btn').textContent = 'Add Source';
+    document.getElementById('source-cancel-btn').textContent = 'Done';
+    renderColorChips();
+  } else {
+    closeModal('add-source-modal');
+  }
+}
+
+function saveSource() {
+  const name    = document.getElementById('source-name').value.trim();
+  const type    = document.getElementById('source-type').value;
   const balance = parseFloat(document.getElementById('source-balance').value) || 0;
 
   if (!name) { showToast('Enter an account name'); return; }
 
-  const s = { id: Date.now(), name, type, balance, color: state.selectedColor };
-  state.sources.push(s);
-  save(); render();
-  renderSourcesModal();
-  showToast('Source added ✓');
-  document.getElementById('source-name').value = '';
-  document.getElementById('source-balance').value = '';
-  autoSync('source', 'add', s);
+  if (editingSourceId) {
+    // Edit existing source
+    const idx = state.sources.findIndex(s => s.id === editingSourceId);
+    if (idx === -1) return;
+    state.sources[idx] = { ...state.sources[idx], name, type, balance, color: state.selectedColor };
+    save(); render(); renderSourcesModal();
+    showToast('Source updated ✓');
+    autoSync('source', 'delete', editingSourceId); // delete old row
+    autoSync('source', 'add', state.sources[idx]); // re-add updated row
+
+    // Reset form
+    editingSourceId = null;
+    document.getElementById('source-name').value = '';
+    document.getElementById('source-balance').value = '';
+    document.getElementById('source-form-title').textContent = 'Add New Source';
+    document.getElementById('source-save-btn').textContent = 'Add Source';
+    document.getElementById('source-cancel-btn').textContent = 'Done';
+    renderColorChips();
+  } else {
+    // Add new source
+    const s = { id: Date.now(), name, type, balance, color: state.selectedColor };
+    state.sources.push(s);
+    save(); render(); renderSourcesModal();
+    showToast('Source added ✓');
+    document.getElementById('source-name').value = '';
+    document.getElementById('source-balance').value = '';
+    autoSync('source', 'add', s);
+  }
 }
 
 function deleteSource(id) {
@@ -2152,7 +2216,10 @@ function renderSourcesModal() {
       <div class="source-color-dot" style="background:${src.color}"></div>
       <div class="source-name">${SOURCE_ICONS[src.type] || '💳'} ${src.name}</div>
       <div class="source-balance">${fmtMoney(src.balance)}</div>
-      <div class="source-delete" onclick="deleteSource(${src.id})">✕</div>
+      <div style="display:flex;gap:6px;align-items:center">
+        <div style="cursor:pointer;font-size:13px;opacity:0.6;padding:4px" onclick="openEditSource(${src.id})" title="Edit">✏️</div>
+        <div class="source-delete" onclick="deleteSource(${src.id})">✕</div>
+      </div>
     </div>`).join('');
 }
 
@@ -2960,6 +3027,14 @@ function closeModal(id) {
   if (id === 'add-txn-modal') {
     editingTxnId = null;
     document.querySelector('#add-txn-modal .btn-primary').textContent = 'Save Transaction';
+  }
+  if (id === 'add-source-modal') {
+    editingSourceId = null;
+    document.getElementById('source-form-title').textContent = 'Add New Source';
+    document.getElementById('source-save-btn').textContent = 'Add Source';
+    document.getElementById('source-cancel-btn').textContent = 'Done';
+    document.getElementById('source-name').value = '';
+    document.getElementById('source-balance').value = '';
   }
 }
 document.querySelectorAll('.modal-overlay').forEach(el => {
