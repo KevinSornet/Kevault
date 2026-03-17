@@ -2822,11 +2822,8 @@ async function pushAllData(sid) {
       src ? src.name : ''
     ];
   });
-  const goalRows = state.goals.map(g => {
-    const pct = g.target ? Math.round((g.current / g.target) * 100) : 0;
-    return [g.id, g.name, g.emoji || '', g.target, g.current, Math.max(0, g.target - g.current), pct + '%', g.deadline || ''];
-  });
-  const srcRows = state.sources.map(s => [s.id, s.name, s.type, s.balance, s.color]);
+  const goalRows = state.goals.map(g => goalToRow(g));
+  const srcRows  = state.sources.map(s => sourceToRow(s));
 
   const updates = [];
   if (txnRows.length)  updates.push({ range: 'Transactions!A2', values: txnRows });
@@ -3075,9 +3072,12 @@ async function syncAllToSheet() {
   setSyncDot('syncing');
   showToast('Uploading to sheet…');
   try {
+    // Clear data rows (keep row 1 for now, then overwrite headers too)
     for (const tab of ['Transactions!A2:Z', 'Goals!A2:Z', 'Sources!A2:Z']) {
       await sheetRequest('POST', `/values/${encodeURIComponent(tab)}:clear`);
     }
+    // Always rewrite headers so column names stay up to date
+    await writeSheetHeaders(state.sheetsId);
     await pushAllData(state.sheetsId);
     setSyncDot('synced');
     setTimeout(() => setSyncDot('idle'), 3000);
@@ -3513,6 +3513,7 @@ async function startupSync() {
       for (const tab of ['Transactions!A2:Z', 'Goals!A2:Z', 'Sources!A2:Z']) {
         await sheetRequest('POST', `/values/${encodeURIComponent(tab)}:clear`);
       }
+      await writeSheetHeaders(state.sheetsId);
       await pushAllData(state.sheetsId);
       setSyncDot('synced');
       showToast('📗 Sheet updated on startup');
@@ -3532,6 +3533,7 @@ async function startupSync() {
       for (const tab of ['Transactions!A2:Z', 'Goals!A2:Z', 'Sources!A2:Z']) {
         await sheetRequest('POST', `/values/${encodeURIComponent(tab)}:clear`);
       }
+      await writeSheetHeaders(state.sheetsId);
       await pushAllData(state.sheetsId);
       setSyncDot('synced');
       setTimeout(() => setSyncDot('idle'), 3000);
@@ -3559,6 +3561,7 @@ setInterval(async () => {
     for (const tab of ['Transactions!A2:Z', 'Goals!A2:Z', 'Sources!A2:Z']) {
       await sheetRequest('POST', `/values/${encodeURIComponent(tab)}:clear`);
     }
+    await writeSheetHeaders(state.sheetsId);
     await pushAllData(state.sheetsId);
     setSyncDot('synced');
     setTimeout(() => setSyncDot('idle'), 3000);
