@@ -426,7 +426,25 @@
   @keyframes spin { to { transform: rotate(360deg); } }
   .spinner { display: inline-block; width: 16px; height: 16px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.7s linear infinite; vertical-align: middle; margin-right: 6px; }
 
-  /* ── ANALYSIS ── */
+  /* ── CONFIRM DIALOG ── */
+  .confirm-overlay {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.6);
+    backdrop-filter: blur(4px);
+    z-index: 400;
+    display: flex; align-items: flex-end; justify-content: center;
+  }
+  .confirm-box {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 20px 20px 0 0;
+    padding: 22px 20px calc(22px + env(safe-area-inset-bottom));
+    width: 100%; max-width: 430px;
+    animation: slideUp 0.25s cubic-bezier(0.32,0.72,0,1);
+  }
+  .confirm-msg { font-size: 15px; font-weight: 700; margin-bottom: 18px; line-height: 1.5; }
+  .confirm-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
   .cat-bar-row { margin-bottom: 12px; }
   .cat-bar-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:5px; }
   .cat-bar-name { font-size:13px; font-weight:600; }
@@ -905,7 +923,7 @@
 <div class="modal-overlay" id="add-goal-modal">
   <div class="modal">
     <div class="modal-handle"></div>
-    <div class="modal-title">New Savings Goal</div>
+    <div class="modal-title" id="goal-modal-title">New Savings Goal</div>
     <div class="form-group">
       <label>Goal Name</label>
       <input type="text" id="goal-name" placeholder="e.g. Emergency Fund, Vacation..." />
@@ -946,8 +964,8 @@
       <label>Target Date (optional)</label>
       <input type="date" id="goal-deadline" />
     </div>
-    <button class="btn btn-primary" onclick="addGoal()">Create Goal</button>
-    <button class="btn btn-secondary" style="margin-top:8px" onclick="closeModal('add-goal-modal')">Cancel</button>
+    <button class="btn btn-primary" id="goal-save-btn" onclick="saveGoal()">Create Goal</button>
+    <button class="btn btn-secondary" style="margin-top:8px" onclick="cancelGoalEdit()">Cancel</button>
   </div>
 </div>
 
@@ -1116,8 +1134,8 @@
       <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:0.8px">Transaction History</div>
       <div style="display:flex;gap:6px" id="src-filter-chips">
         <div class="chip selected" style="font-size:10px;padding:4px 10px" onclick="srcFilter('all',this)">All</div>
-        <div class="chip" style="font-size:10px;padding:4px 10px" onclick="srcFilter('expense',this)">Out</div>
-        <div class="chip" style="font-size:10px;padding:4px 10px" onclick="srcFilter('income',this)">In</div>
+        <div class="chip" style="font-size:10px;padding:4px 10px" onclick="srcFilter('expense',this)">Money Out</div>
+        <div class="chip" style="font-size:10px;padding:4px 10px" onclick="srcFilter('income',this)">Money In</div>
       </div>
     </div>
     <div id="src-detail-txns" style="max-height:300px;overflow-y:auto;border:1px solid var(--border);border-radius:12px;padding:0 12px"></div>
@@ -1333,20 +1351,30 @@ function txnHTML(t) {
   const subtypeLabel = isTransfer
     ? (t.subtype === 'fee' ? ' · Fee' : t.subtype === 'out' ? ' · Out' : ' · In') : '';
 
+  // For transfers, show a linked badge so the user knows it's part of a group
+  const linkedBadge = isTransfer && t.transferGroup
+    ? `<div style="font-size:9px;color:var(--accent4);background:rgba(255,184,106,0.12);border:1px solid rgba(255,184,106,0.25);border-radius:4px;padding:1px 5px;margin-top:2px;display:inline-block">🔗 linked transfer</div>`
+    : '';
+
+  const deleteTitle = isTransfer ? 'Delete entire transfer' : 'Delete';
   const canEdit = !isTransfer;
+
+  // Clicking the row opens edit for regular txns, shows info sheet for transfers
+  const rowClick = canEdit
+    ? `onclick="openEditTxn(${t.id})"`
+    : `onclick="showTransferActions(${t.id})"`;
+
   return `
-    <div class="tx-item" id="txn-${t.id}">
+    <div class="tx-item" id="txn-${t.id}" ${rowClick} style="cursor:pointer">
       <div class="tx-icon" style="background:${bgColors[t.type] || bgColors.expense}">${emoji}</div>
       <div class="tx-info">
         <div class="tx-name">${t.desc || cat}</div>
         <div class="tx-meta">${dateStr} · ${srcName}${subtypeLabel}</div>
+        ${linkedBadge}
       </div>
       <div style="display:flex;align-items:center;gap:8px">
         <div class="tx-amount ${amountCls}">${amountStr}</div>
-        <div style="display:flex;gap:4px">
-          ${canEdit ? `<div onclick="openEditTxn(${t.id})" style="cursor:pointer;font-size:13px;opacity:0.5;padding:4px">✏️</div>` : ''}
-          <div onclick="deleteTxn(${t.id})" style="cursor:pointer;font-size:13px;opacity:0.5;padding:4px">🗑</div>
-        </div>
+        <div onclick="event.stopPropagation();deleteTxn(${t.id})" style="cursor:pointer;font-size:13px;opacity:0.4;padding:6px" title="${deleteTitle}">🗑</div>
       </div>
     </div>`;
 }
@@ -1381,6 +1409,7 @@ function renderGoals() {
         </div>
         <div style="display:flex;gap:8px;margin-top:12px">
           <button class="btn btn-secondary" style="flex:1;padding:9px;font-size:12px" onclick="addToGoal(${i})">+ Add Funds</button>
+          <button class="btn btn-secondary" style="flex:0;padding:9px 14px;font-size:12px" onclick="openEditGoal(${g.id})">✏️</button>
           <button class="btn btn-danger" style="flex:0;padding:9px 14px;font-size:12px" onclick="deleteGoal(${i})">🗑</button>
         </div>
       </div>`;
@@ -1434,7 +1463,6 @@ function renderAnalysis() {
   const m = analysisDate.getMonth();
   const y = analysisDate.getFullYear();
   const label = analysisDate.toLocaleDateString('en-PH', { month: 'long', year: 'numeric' });
-  document.getElementById('analysis-month-label').textContent = label;
 
   const txns = state.transactions.filter(t => {
     const d = new Date(t.date);
@@ -1448,7 +1476,12 @@ function renderAnalysis() {
   const net      = totalInc - totalExp;
   const rate     = totalInc > 0 ? Math.round((net / totalInc) * 100) : 0;
 
-  document.getElementById('an-income').textContent  = fmtMoney(totalInc);
+  // Guard — these elements only exist on the transactions page
+  const anIncome = document.getElementById('an-income');
+  if (!anIncome) return;
+
+  document.getElementById('analysis-month-label').textContent = label;
+  anIncome.textContent  = fmtMoney(totalInc);
   document.getElementById('an-expense').textContent = fmtMoney(totalExp);
   document.getElementById('an-net').textContent     = fmtMoney(net);
   document.getElementById('an-net').style.color     = net >= 0 ? 'var(--accent3)' : 'var(--accent2)';
@@ -1466,6 +1499,7 @@ function renderAnalysis() {
 
 function renderCategoryBreakdown(txns, total, elId, type) {
   const el = document.getElementById(elId);
+  if (!el) return;
   if (!txns.length) { el.innerHTML = '<div class="empty-state" style="padding:14px 0">Nothing this month</div>'; return; }
 
   const catMap = {};
@@ -1498,6 +1532,7 @@ function renderCategoryBreakdown(txns, total, elId, type) {
 
 function renderDailyChart(txns, month, year) {
   const el = document.getElementById('daily-chart');
+  if (!el) return;
   const daysInMonth = new Date(year, month + 1, 0).getDate();
   const daily = Array(daysInMonth).fill(0);
   txns.filter(t => t.type === 'expense').forEach(t => {
@@ -1520,6 +1555,8 @@ function renderDailyChart(txns, month, year) {
 let selectedHeatmapDay = null;
 
 function renderHeatmap() {
+  const grid = document.getElementById('heatmap-grid');
+  if (!grid) return;
   const m = analysisDate.getMonth();
   const y = analysisDate.getFullYear();
   const daysInMonth = new Date(y, m + 1, 0).getDate();
@@ -1543,7 +1580,7 @@ function renderHeatmap() {
   const maxVol = Math.max(...Object.values(dayData).map(d => d.volume), 1);
   const today = new Date();
 
-  const grid = document.getElementById('heatmap-grid');
+  // grid already declared above via the guard
   // Empty cells for offset
   let cells = '';
   for (let i = 0; i < firstDow; i++) {
@@ -1634,7 +1671,8 @@ function openDayDetail(day) {
 
 function closeDayDetail() {
   selectedHeatmapDay = null;
-  document.getElementById('day-detail-panel').style.display = 'none';
+  const panel = document.getElementById('day-detail-panel');
+  if (panel) panel.style.display = 'none';
   renderHeatmap();
 }
 
@@ -1856,8 +1894,10 @@ function setType(type) {
 
 function renderCategoryChips() {
   const el = document.getElementById('category-chips');
+  if (!el) return;
   state.selectedCategory = '';
   const cats = CATEGORIES[state.txnType];
+  if (!cats) { el.innerHTML = ''; return; }
   el.innerHTML = cats.map(c => `<div class="chip" onclick="selectCat(this,'${c}')">${c}</div>`).join('');
 }
 
@@ -1944,24 +1984,77 @@ function addTransaction() {
   autoSync('txn', 'add', txn);
 }
 
-function addGoal() {
-  const name = document.getElementById('goal-name').value.trim();
-  const target = parseFloat(document.getElementById('goal-target').value);
-  const current = parseFloat(document.getElementById('goal-current').value) || 0;
+// ── GOAL EDIT ──
+let editingGoalId = null;
+let editingTxnId = null;
+
+function openEditGoal(id) {
+  id = Number(id) || id;
+  const g = state.goals.find(g => String(g.id) === String(id));
+  if (!g) return;
+  editingGoalId = g.id;
+
+  // Set fields before openModal so the guard check works
+  state.selectedGoalEmoji = g.emoji || '🎯';
+
+  document.getElementById('goal-name').value      = g.name;
+  document.getElementById('goal-target').value    = g.target;
+  document.getElementById('goal-current').value   = g.current;
+  document.getElementById('goal-monthly').value   = g.monthly || '';
+  document.getElementById('goal-deadline').value  = g.deadline || '';
+  document.getElementById('goal-modal-title').textContent = 'Edit Goal';
+  document.getElementById('goal-save-btn').textContent    = 'Save Changes';
+
+  openModal('add-goal-modal'); // this repopulates the source select
+
+  // Set sourceId AFTER openModal since openModal rebuilds the select
+  const sel = document.getElementById('goal-source');
+  const matchOpt = [...sel.options].find(o => String(o.value) === String(g.sourceId));
+  if (matchOpt) sel.value = matchOpt.value;
+  else sel.value = '';
+}
+
+function cancelGoalEdit() {
+  editingGoalId = null;
+  document.getElementById('goal-modal-title').textContent = 'New Savings Goal';
+  document.getElementById('goal-save-btn').textContent    = 'Create Goal';
+  closeModal('add-goal-modal');
+}
+
+function saveGoal() {
+  const name     = document.getElementById('goal-name').value.trim();
+  const target   = parseFloat(document.getElementById('goal-target').value);
+  const current  = parseFloat(document.getElementById('goal-current').value) || 0;
   const deadline = document.getElementById('goal-deadline').value;
   const sourceId = document.getElementById('goal-source').value;
-  const monthly = parseFloat(document.getElementById('goal-monthly').value) || 0;
+  const monthly  = parseFloat(document.getElementById('goal-monthly').value) || 0;
 
-  if (!name) { showToast('Enter a goal name'); return; }
+  if (!name)              { showToast('Enter a goal name'); return; }
   if (!target || target <= 0) { showToast('Enter a target amount'); return; }
 
+  if (editingGoalId) {
+    // Update existing goal
+    const idx = state.goals.findIndex(g => String(g.id) === String(editingGoalId));
+    if (idx === -1) return;
+    state.goals[idx] = { ...state.goals[idx], name, target, current, deadline, sourceId, monthly, emoji: state.selectedGoalEmoji };
+    save(); render();
+    autoSync('goal', 'update', state.goals[idx]);
+    showToast('Goal updated ✓');
+    editingGoalId = null;
+    document.getElementById('goal-modal-title').textContent = 'New Savings Goal';
+    document.getElementById('goal-save-btn').textContent    = 'Create Goal';
+    closeModal('add-goal-modal');
+    return;
+  }
+
+  // Create new goal
   const g = { id: Date.now(), name, target, current, deadline, emoji: state.selectedGoalEmoji, sourceId, monthly };
   state.goals.push(g);
   save(); render();
   closeModal('add-goal-modal');
   showToast('Goal created! 🎯');
-  document.getElementById('goal-name').value = '';
-  document.getElementById('goal-target').value = '';
+  document.getElementById('goal-name').value    = '';
+  document.getElementById('goal-target').value  = '';
   document.getElementById('goal-current').value = '';
   document.getElementById('goal-monthly').value = '';
   autoSync('goal', 'add', g);
@@ -1998,12 +2091,12 @@ function addToGoal(i) {
 }
 
 function deleteGoal(i) {
-  if (confirm('Delete this goal?')) {
+  showConfirm('Delete this goal?', () => {
     const id = state.goals[i].id;
     state.goals.splice(i, 1);
     save(); renderGoals();
     autoSync('goal', 'delete', id);
-  }
+  });
 }
 
 // ── SOURCE DETAIL ──
@@ -2222,12 +2315,17 @@ function srcFilter(f, el) {
 }
 
 function renderSrcTxns(sid, filter) {
+  // Include transfer-in legs for THIS source (they show the money received)
   let txns = state.transactions
-    .filter(t => String(t.source) === sid && t.subtype !== 'in')
+    .filter(t => {
+      if (String(t.source) !== sid) return false;
+      // For transfers: show out, fee, AND in (in = money received into this account)
+      return true;
+    })
     .sort((a, b) => new Date(b.date) - new Date(a.date));
 
   if (filter === 'expense') txns = txns.filter(t => t.type === 'expense' || (t.type==='transfer'&&(t.subtype==='out'||t.subtype==='fee')));
-  if (filter === 'income')  txns = txns.filter(t => t.type === 'income');
+  if (filter === 'income')  txns = txns.filter(t => t.type === 'income'  || (t.type==='transfer'&&t.subtype==='in'));
 
   const el = document.getElementById('src-detail-txns');
   if (!txns.length) {
@@ -2390,47 +2488,129 @@ function populateSourceSelect() {
 }
 
 function populateTransferSelects() {
-  const opts = state.sources.length
-    ? state.sources.map(s => `<option value="${s.id}">${SOURCE_ICONS[s.type]} ${s.name}</option>`).join('')
-    : '<option value="">— Add a source first —</option>';
-  document.getElementById('transfer-from').innerHTML = opts;
-  document.getElementById('transfer-to').innerHTML = opts;
+  if (!state.sources.length) {
+    const empty = '<option value="">— Add a source first —</option>';
+    document.getElementById('transfer-from').innerHTML = empty;
+    document.getElementById('transfer-to').innerHTML   = empty;
+  } else {
+    const opts = state.sources.map(s => `<option value="${s.id}">${SOURCE_ICONS[s.type]} ${s.name}</option>`).join('');
+    document.getElementById('transfer-from').innerHTML = opts;
+    document.getElementById('transfer-to').innerHTML   = opts;
+    // Auto-select second source for "to" so they're different by default
+    if (state.sources.length > 1) {
+      document.getElementById('transfer-to').value = state.sources[1].id;
+    }
+  }
   document.getElementById('transfer-date').value = new Date().toISOString().split('T')[0];
   document.getElementById('form-currency-transfer').textContent = state.currency;
 }
 
 function deleteTxn(id) {
-  if (!confirm('Delete this transaction?')) return;
-  state.transactions = state.transactions.filter(t => t.id !== id);
-  save(); render();
-  showToast('Transaction deleted');
-  autoSync('txn', 'delete', id);
+  id = Number(id) || id;
+  const txn = state.transactions.find(t => String(t.id) === String(id));
+  if (!txn) { showToast('Transaction not found'); return; }
+
+  if (txn.type === 'transfer' && txn.transferGroup) {
+    const group = state.transactions.filter(t => String(t.transferGroup) === String(txn.transferGroup));
+    showConfirm(
+      `Delete this entire transfer? (${group.length} linked entries will be removed)`,
+      () => {
+        const groupIds = group.map(t => String(t.id));
+        state.transactions = state.transactions.filter(t => !groupIds.includes(String(t.id)));
+        save(); render();
+        showToast(`🔁 Transfer deleted`);
+        groupIds.forEach(gid => autoSync('txn', 'delete', gid));
+      }
+    );
+    return;
+  }
+
+  showConfirm('Delete this transaction?', () => {
+    state.transactions = state.transactions.filter(t => String(t.id) !== String(id));
+    save(); render();
+    showToast('Transaction deleted');
+    autoSync('txn', 'delete', id);
+  });
 }
 
-let editingTxnId = null;
+function showTransferActions(id) {
+  id = Number(id) || id;
+  const txn = state.transactions.find(t => String(t.id) === String(id));
+  if (!txn) return;
+  const group   = state.transactions.filter(t => String(t.transferGroup) === String(txn.transferGroup));
+  const out     = group.find(t => t.subtype === 'out');
+  const inn     = group.find(t => t.subtype === 'in');
+  const fee     = group.find(t => t.subtype === 'fee');
+  const fromSrc = state.sources.find(s => String(s.id) === String(out?.source));
+  const toSrc   = state.sources.find(s => String(s.id) === String(inn?.source));
+
+  const existing = document.getElementById('vault-confirm');
+  if (existing) existing.remove();
+
+  const overlay = document.createElement('div');
+  overlay.id = 'vault-confirm';
+  overlay.className = 'confirm-overlay';
+  overlay.innerHTML = `
+    <div class="confirm-box">
+      <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:0.8px;margin-bottom:10px">Transfer Details</div>
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+        <div style="font-size:24px">🔁</div>
+        <div>
+          <div style="font-size:15px;font-weight:800">${fromSrc?.name||'?'} → ${toSrc?.name||'?'}</div>
+          <div style="font-size:12px;color:var(--text2);margin-top:2px">${new Date(out?.date||Date.now()).toLocaleDateString('en-PH',{month:'long',day:'numeric',year:'numeric'})}</div>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px">
+        <div style="background:var(--surface2);border-radius:8px;padding:10px;text-align:center">
+          <div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:3px">Amount</div>
+          <div style="font-family:'DM Mono',monospace;font-size:14px;font-weight:700">${fmtMoney(out?.amount||0)}</div>
+        </div>
+        <div style="background:${fee?'rgba(255,184,106,0.08)':'var(--surface2)'};border-radius:8px;padding:10px;text-align:center;border:1px solid ${fee?'rgba(255,184,106,0.2)':'var(--border)'}">
+          <div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:3px">Fee</div>
+          <div style="font-family:'DM Mono',monospace;font-size:14px;font-weight:700;color:${fee?'var(--accent4)':'var(--text3)'}">${fee?fmtMoney(fee.amount):'None'}</div>
+        </div>
+      </div>
+      <div style="font-size:11px;color:var(--text3);margin-bottom:14px;line-height:1.6">Transfers cannot be edited. To make a change, tap the 🗑 icon to delete it and re-enter it.</div>
+      <button class="btn btn-secondary" id="confirm-cancel-btn">Close</button>
+    </div>`;
+  document.body.appendChild(overlay);
+  const close = () => overlay.remove();
+  overlay.querySelector('#confirm-cancel-btn').addEventListener('click', close);
+  overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
+}
 function openEditTxn(id) {
-  const t = state.transactions.find(t => t.id === id);
-  if (!t) return;
-  editingTxnId = id;
+  id = Number(id) || id;
+  const t = state.transactions.find(t => String(t.id) === String(id));
+  if (!t) { showToast('Transaction not found'); return; }
+
+  // Set editingTxnId BEFORE openModal so the modal doesn't reset fields
+  editingTxnId = t.id;
   state.txnType = t.type;
-  openModal('add-txn-modal');
+  state.selectedCategory = t.category || '';
+
+  openModal('add-txn-modal'); // renderCategoryChips runs here, now we fix selection after
+
+  // Set all field values directly
   document.getElementById('txn-amount').value = t.amount;
-  document.getElementById('txn-desc').value = t.desc || '';
-  document.getElementById('txn-date').value = t.date;
-  document.getElementById('txn-source').value = t.source;
-  // Pre-select category chip after chips render
-  setTimeout(() => {
-    document.querySelectorAll('#category-chips .chip').forEach(c => {
-      if (c.textContent.trim() === (t.category || '').trim()) c.classList.add('selected');
-    });
-    state.selectedCategory = t.category || '';
-  }, 50);
-  // Change button label
+  document.getElementById('txn-desc').value   = t.desc || '';
+  document.getElementById('txn-date').value   = t.date;
+
+  // Set source — match by string
+  const srcOpt = [...document.getElementById('txn-source').options]
+    .find(o => String(o.value) === String(t.source));
+  if (srcOpt) document.getElementById('txn-source').value = srcOpt.value;
+
+  // Select the matching category chip
+  document.querySelectorAll('#category-chips .chip').forEach(c => {
+    const matches = c.textContent.trim() === (t.category || '').trim();
+    c.classList.toggle('selected', matches);
+  });
+
   document.querySelector('#add-txn-modal .btn-primary').textContent = 'Update Transaction';
 }
 
 function saveEditTxn(amount, desc, source, date) {
-  const idx = state.transactions.findIndex(t => t.id === editingTxnId);
+  const idx = state.transactions.findIndex(t => String(t.id) === String(editingTxnId));
   if (idx === -1) return false;
   state.transactions[idx] = {
     ...state.transactions[idx],
@@ -2450,6 +2630,8 @@ function filterTxn(f, el) {
 }
 
 function renderTransactionsForMonth() {
+  const allEl = document.getElementById('all-txns-list');
+  if (!allEl) return;
   const f = state.txnFilter;
   const m = analysisDate.getMonth();
   const y = analysisDate.getFullYear();
@@ -2462,7 +2644,6 @@ function renderTransactionsForMonth() {
   if (f === 'transfer') txns = txns.filter(t => t.type === 'transfer');
   if (f === 'all')      txns = txns.filter(t => t.subtype !== 'in');
 
-  const allEl = document.getElementById('all-txns-list');
   allEl.innerHTML = txns.length ? txns.map(txnHTML).join('') : '<div class="empty-state">No transactions found.</div>';
 }
 
@@ -2587,7 +2768,7 @@ async function createNewSheet() {
 }
 
 async function writeSheetHeaders(sid) {
-  const txnHeaders = [['ID','Date','Type','Description','Category','Amount','Source','Source Name']];
+  const txnHeaders = [['ID','Date','Type','Subtype','Group ID','Description','Category','Amount','Source','Source Name']];
   const goalHeaders = [['ID','Name','Emoji','Target','Saved','Remaining','% Complete','Deadline','Linked Source','Monthly Target']];
   const srcHeaders  = [['ID','Name','Type','Starting Balance','Color']];
 
@@ -2627,8 +2808,19 @@ async function styleHeaders(sid) {
 
 async function pushAllData(sid) {
   const txnRows = state.transactions.map(t => {
-    const src = state.sources.find(s => s.id === t.source);
-    return [t.id, t.date, t.type, t.desc || '', t.category || '', t.amount, t.source, src ? src.name : ''];
+    const src = state.sources.find(s => String(s.id) === String(t.source));
+    return [
+      String(t.id),
+      t.date,
+      t.type,
+      t.subtype  || '',
+      t.transferGroup ? String(t.transferGroup) : '',
+      t.desc     || '',
+      t.category || '',
+      t.amount,
+      String(t.source),
+      src ? src.name : ''
+    ];
   });
   const goalRows = state.goals.map(g => {
     const pct = g.target ? Math.round((g.current / g.target) * 100) : 0;
@@ -2718,7 +2910,18 @@ async function ensureAuth() {
 // ── ROW CONVERTERS ──
 function txnToRow(t) {
   const src = state.sources.find(s => String(s.id) === String(t.source));
-  return [String(t.id), t.date, t.type, t.desc || '', t.category || '', t.amount, String(t.source), src ? src.name : ''];
+  return [
+    String(t.id),
+    t.date,
+    t.type,
+    t.subtype  || '',
+    t.transferGroup ? String(t.transferGroup) : '',
+    t.desc     || '',
+    t.category || '',
+    t.amount,
+    String(t.source),
+    src ? src.name : ''
+  ];
 }
 
 function goalToRow(g) {
@@ -2919,11 +3122,36 @@ async function importFromSheet() {
       id: Number(r[0]) || r[0], name: r[1] || '',
       type: r[2] || 'bank', balance: parseFloat(r[3]) || 0, color: r[4] || '#7c6aff'
     }));
-    const transactions = txnRows.filter(r => r[0]).map(r => ({
-      id: Number(r[0]) || r[0], date: r[1] || '', type: r[2] || 'expense',
-      desc: r[3] || '', category: r[4] || '', amount: parseFloat(r[5]) || 0,
-      source: Number(r[6]) || r[6]
-    }));
+    const transactions = txnRows.filter(r => r[0]).map(r => {
+      // New layout: ID, Date, Type, Subtype, GroupID, Desc, Category, Amount, Source, SourceName
+      // Old layout: ID, Date, Type, Desc, Category, Amount, Source, SourceName
+      // Detect old vs new by checking if r[3] looks like a subtype keyword
+      const isNewLayout = ['out','in','fee',''].includes(r[3] || '');
+      if (isNewLayout) {
+        return {
+          id:            Number(r[0]) || r[0],
+          date:          r[1] || '',
+          type:          r[2] || 'expense',
+          subtype:       r[3] || undefined,
+          transferGroup: r[4] ? (Number(r[4]) || r[4]) : undefined,
+          desc:          r[5] || '',
+          category:      r[6] || '',
+          amount:        parseFloat(r[7]) || 0,
+          source:        Number(r[8]) || r[8]
+        };
+      } else {
+        // Legacy layout fallback
+        return {
+          id:       Number(r[0]) || r[0],
+          date:     r[1] || '',
+          type:     r[2] || 'expense',
+          desc:     r[3] || '',
+          category: r[4] || '',
+          amount:   parseFloat(r[5]) || 0,
+          source:   Number(r[6]) || r[6]
+        };
+      }
+    });
     const goals = goalRows.filter(r => r[0]).map(r => {
       const srcMatch = sources.find(s => s.name === r[8]);
       return {
@@ -3117,10 +3345,10 @@ function changeCurrency(c) {
 }
 
 function clearAllData() {
-  if (confirm('Clear ALL data? This cannot be undone.')) {
+  showConfirm('Clear ALL data? This cannot be undone.', () => {
     state.transactions = []; state.goals = []; state.sources = [];
     save(); render(); showToast('Data cleared');
-  }
+  });
 }
 
 // ── MODAL ──
@@ -3129,8 +3357,14 @@ function openModal(id) {
   if (id === 'add-txn-modal') {
     renderCategoryChips();
     populateSourceSelect();
-    document.getElementById('txn-date').value = new Date().toISOString().split('T')[0];
+    // Only reset to defaults if NOT editing
+    if (!editingTxnId) {
+      document.getElementById('txn-date').value = new Date().toISOString().split('T')[0];
+      document.getElementById('txn-amount').value = '';
+      document.getElementById('txn-desc').value = '';
+    }
     document.getElementById('form-currency').textContent = state.currency;
+    document.getElementById('form-currency-transfer').textContent = state.currency;
   }
   if (id === 'add-source-modal') {
     renderColorChips();
@@ -3153,6 +3387,18 @@ function openModal(id) {
     const sel = document.getElementById('goal-source');
     sel.innerHTML = '<option value="">— None —</option>' +
       state.sources.map(s => `<option value="${s.id}">${SOURCE_ICONS[s.type]||'💳'} ${s.name}</option>`).join('');
+    // Only reset to create mode if not already in edit mode (openEditGoal sets editingGoalId before calling openModal)
+    if (!editingGoalId) {
+      document.getElementById('goal-modal-title').textContent = 'New Savings Goal';
+      document.getElementById('goal-save-btn').textContent    = 'Create Goal';
+      document.getElementById('goal-name').value    = '';
+      document.getElementById('goal-target').value  = '';
+      document.getElementById('goal-current').value = '';
+      document.getElementById('goal-monthly').value = '';
+      document.getElementById('goal-deadline').value = '';
+      state.selectedGoalEmoji = '💰';
+      renderGoalEmojiChips();
+    }
   }
 }
 function closeModal(id) {
@@ -3160,6 +3406,11 @@ function closeModal(id) {
   if (id === 'add-txn-modal') {
     editingTxnId = null;
     document.querySelector('#add-txn-modal .btn-primary').textContent = 'Save Transaction';
+  }
+  if (id === 'add-goal-modal') {
+    editingGoalId = null;
+    document.getElementById('goal-modal-title').textContent = 'New Savings Goal';
+    document.getElementById('goal-save-btn').textContent    = 'Create Goal';
   }
   if (id === 'add-source-modal') {
     editingSourceId = null;
@@ -3182,6 +3433,34 @@ function switchPage(name) {
     const pages = ['dashboard','transactions',null,'goals','settings'];
     n.classList.toggle('active', pages[i] === name);
   });
+}
+
+// ── CONFIRM DIALOG ──
+function showConfirm(msg, onConfirm) {
+  // Remove any existing confirm
+  const existing = document.getElementById('vault-confirm');
+  if (existing) existing.remove();
+
+  const overlay = document.createElement('div');
+  overlay.id = 'vault-confirm';
+  overlay.className = 'confirm-overlay';
+  overlay.innerHTML = `
+    <div class="confirm-box">
+      <div class="confirm-msg">${msg}</div>
+      <div class="confirm-btns">
+        <button class="btn btn-secondary" id="confirm-cancel-btn">Cancel</button>
+        <button class="btn btn-danger" id="confirm-ok-btn">Delete</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+
+  const close = () => overlay.remove();
+  overlay.querySelector('#confirm-cancel-btn').addEventListener('click', close);
+  overlay.querySelector('#confirm-ok-btn').addEventListener('click', () => {
+    close();
+    onConfirm();
+  });
+  overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
 }
 
 // ── TOAST ──
